@@ -35,6 +35,30 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
         // Empty
     }
 
+    /**
+     * Smart comparison for sorting that handles numbers, text, and mixed values
+     */
+    private smartCompare(a: string, b: string): number {
+        // Try parsing as numbers
+        const aNum = Number(a);
+        const bNum = Number(b);
+        
+        // If both are valid numbers, sort numerically
+        if (!isNaN(aNum) && !isNaN(bNum)) {
+            return aNum - bNum;
+        }
+        
+        // Otherwise, sort alphabetically with locale support
+        return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    }
+
+    /**
+     * Get field name from dataset property-set
+     */
+    private getFieldName(dataset: ComponentFramework.PropertyTypes.DataSet, alias: string): string {
+        return dataset.columns.find(col => col.alias === alias)?.name || "";
+    }
+
     public init(
         context: ComponentFramework.Context<IInputs>,
         notifyOutputChanged: () => void,
@@ -89,53 +113,55 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
     }
 
     private validateInputs(context: ComponentFramework.Context<IInputs>): string | null {
-        const rowHeader = context.parameters.rowHeaderField.raw;
-        const columnHeader = context.parameters.columnHeaderField.raw;
-        const cellContent = context.parameters.cellContentField.raw;
-        const calculation = context.parameters.cellCalculation.raw;
+        const dataset = context.parameters.matrixDataSet;
+        
+        // Check if dataset and columns are available
+        if (!dataset || !dataset.columns || dataset.columns.length === 0) {
+            return "Dataset not properly configured";
+        }
 
-        if (!rowHeader) {
+        // Get field names from property-sets
+        const rowHeaderCol = dataset.columns.find(col => col.alias === "rowHeaderField");
+        const columnHeaderCol = dataset.columns.find(col => col.alias === "columnHeaderField");
+        const cellContentCol = dataset.columns.find(col => col.alias === "cellContentField");
+        
+        if (!rowHeaderCol) {
             return "Row Header Field is required";
         }
-        if (!columnHeader) {
+        if (!columnHeaderCol) {
             return "Column Header Field is required";
         }
-        if (!cellContent) {
+        if (!cellContentCol) {
             return "Cell Content Field is required";
         }
+
+        const calculation = context.parameters.cellCalculation.raw;
         if (calculation === null || calculation === undefined) {
             return "Cell Calculation is required";
         }
 
         // Validate calculation type against field type
-        const dataset = context.parameters.matrixDataSet;
-        if (dataset && dataset.columns && dataset.columns.length > 0) {
-            const cellColumn = dataset.columns.find(col => col.name === cellContent || col.alias === cellContent);
-            
-            if (cellColumn) {
-                const dataType = cellColumn.dataType;
-                const calcType = (calculation as unknown) as CellCalculation;
+        const dataType = cellContentCol.dataType;
+        const calcType = (calculation as unknown) as CellCalculation;
 
-                // Validate field type compatibility with calculation
-                if (calcType === CellCalculation.Sum || calcType === CellCalculation.Average) {
-                    if (dataType !== "Whole.None" && 
-                        dataType !== "Decimal" && 
-                        dataType !== "Currency" && 
-                        dataType !== "FP") {
-                        return `Cannot perform ${CellCalculation[calcType]} calculation on field type ${dataType}. Only numeric and currency fields are supported for Sum and Average.`;
-                    }
-                }
+        // Validate field type compatibility with calculation
+        if (calcType === CellCalculation.Sum || calcType === CellCalculation.Average) {
+            if (dataType !== "Whole.None" && 
+                dataType !== "Decimal" && 
+                dataType !== "Currency" && 
+                dataType !== "FP") {
+                return `Cannot perform ${CellCalculation[calcType]} calculation on field type ${dataType}. Only numeric and currency fields are supported for Sum and Average.`;
+            }
+        }
 
-                if (calcType === CellCalculation.Max || calcType === CellCalculation.Min) {
-                    if (dataType !== "Whole.None" && 
-                        dataType !== "Decimal" && 
-                        dataType !== "Currency" && 
-                        dataType !== "FP" &&
-                        dataType !== "DateAndTime.DateOnly" &&
-                        dataType !== "DateAndTime.DateAndTime") {
-                        return `Cannot perform ${CellCalculation[calcType]} calculation on field type ${dataType}. Only numeric, currency, and date fields are supported for Max and Min.`;
-                    }
-                }
+        if (calcType === CellCalculation.Max || calcType === CellCalculation.Min) {
+            if (dataType !== "Whole.None" && 
+                dataType !== "Decimal" && 
+                dataType !== "Currency" && 
+                dataType !== "FP" &&
+                dataType !== "DateAndTime.DateOnly" &&
+                dataType !== "DateAndTime.DateAndTime") {
+                return `Cannot perform ${CellCalculation[calcType]} calculation on field type ${dataType}. Only numeric, currency, and date fields are supported for Max and Min.`;
             }
         }
 
@@ -144,10 +170,13 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
 
     private buildMatrix(context: ComponentFramework.Context<IInputs>): HTMLTableElement {
         const dataset = context.parameters.matrixDataSet;
-        const rowHeaderField = context.parameters.rowHeaderField.raw!;
-        const columnHeaderField = context.parameters.columnHeaderField.raw!;
-        const cellContentField = context.parameters.cellContentField.raw!;
-        const rowGroupField = context.parameters.rowGroupField.raw;
+        
+        // Get field names from property-sets (columns)
+        const rowHeaderField = dataset.columns.find(col => col.alias === "rowHeaderField")?.name || "";
+        const columnHeaderField = dataset.columns.find(col => col.alias === "columnHeaderField")?.name || "";
+        const cellContentField = dataset.columns.find(col => col.alias === "cellContentField")?.name || "";
+        const rowGroupCol = dataset.columns.find(col => col.alias === "rowGroupField");
+        const rowGroupField = rowGroupCol ? rowGroupCol.name : null;
         const calculation = (context.parameters.cellCalculation.raw as unknown) as CellCalculation;
         const showColumnTotals = context.parameters.showColumnTotals.raw;
         const showRowTotals = context.parameters.showRowTotals.raw;
@@ -202,12 +231,12 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
         dataset.sortedRecordIds.forEach(recordId => {
             const record = dataset.records[recordId];
             
-            const rowValue = this.getFieldValue(record, rowHeaderField);
-            const rowKey = String(rowValue);
+            // Use formatted values for both row and column keys to properly display option sets
             const rowLabel = this.getFormattedValue(record, rowHeaderField);
+            const rowKey = rowLabel;
             
-            const columnValue = this.getFieldValue(record, columnHeaderField);
-            const columnKey = String(columnValue);
+            const columnLabel = this.getFormattedValue(record, columnHeaderField);
+            const columnKey = columnLabel;
             columnSet.add(columnKey);
 
             // Get or create row
@@ -222,8 +251,8 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
                 };
                 
                 if (rowGroupField) {
-                    const groupValue = this.getFieldValue(record, rowGroupField);
-                    row.groupKey = String(groupValue);
+                    const groupLabel = this.getFormattedValue(record, rowGroupField);
+                    row.groupKey = groupLabel;
                 }
                 
                 rows.set(rowKey, row);
@@ -289,7 +318,8 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
             });
         }
 
-        const columns = Array.from(columnSet).sort();
+        // Smart sort columns (handles numbers and text)
+        const columns = Array.from(columnSet).sort((a, b) => this.smartCompare(a, b));
 
         // Calculate cell values
         rows.forEach(row => {
@@ -333,7 +363,8 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
             return { value: null, formattedValue: "" };
         }
 
-        const column = dataset.columns.find(col => col.name === fieldName || col.alias === fieldName);
+        // Find column by name or alias (for property-set fields)
+        const column = dataset.columns.find(col => col.name === fieldName || col.alias === "cellContentField");
         const values = records.map(r => this.getFieldValue(r, fieldName)).filter(v => v !== null && v !== undefined);
 
         if (values.length === 0 && calculation !== CellCalculation.Count) {
@@ -447,7 +478,7 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
         calculation: CellCalculation,
         showRowTotals: boolean
     ): void {
-        const sortedRows = Array.from(rows.values()).sort((a, b) => a.rowLabel.localeCompare(b.rowLabel));
+        const sortedRows = Array.from(rows.values()).sort((a, b) => this.smartCompare(a.rowLabel, b.rowLabel));
 
         sortedRows.forEach(row => {
             if (row.isGroup) return; // Skip group rows in non-grouped rendering
@@ -482,7 +513,7 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
             if (showRowTotals && rowRecords.length > 0) {
                 const totalCell = document.createElement("td");
                 totalCell.className = "matrix-cell total-cell";
-                const cellContentField = this._context.parameters.cellContentField.raw!;
+                const cellContentField = this.getFieldName(this._context.parameters.matrixDataSet, "cellContentField");
                 const result = this.calculateCellValue(
                     rowRecords,
                     cellContentField,
@@ -555,7 +586,7 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
             if (showRowTotals && groupRecords.length > 0) {
                 const totalCell = document.createElement("td");
                 totalCell.className = "matrix-cell group-total-cell";
-                const cellContentField = this._context.parameters.cellContentField.raw!;
+                const cellContentField = this.getFieldName(this._context.parameters.matrixDataSet, "cellContentField");
                 const result = this.calculateCellValue(
                     groupRecords,
                     cellContentField,
@@ -575,7 +606,7 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
 
             // Create child rows (if expanded)
             if (groupRow.isExpanded) {
-                const sortedGroupRows = groupRows.sort((a, b) => a.rowLabel.localeCompare(b.rowLabel));
+                const sortedGroupRows = groupRows.sort((a, b) => this.smartCompare(a.rowLabel, b.rowLabel));
                 sortedGroupRows.forEach(row => {
                     const tr = document.createElement("tr");
                     tr.className = "row-group-child";
@@ -608,7 +639,7 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
                     if (showRowTotals && rowRecords.length > 0) {
                         const totalCell = document.createElement("td");
                         totalCell.className = "matrix-cell total-cell";
-                        const cellContentField = this._context.parameters.cellContentField.raw!;
+                        const cellContentField = this.getFieldName(this._context.parameters.matrixDataSet, "cellContentField");
                         const result = this.calculateCellValue(
                             rowRecords,
                             cellContentField,
@@ -644,7 +675,7 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
         totalLabel.textContent = "Total";
         totalsRow.appendChild(totalLabel);
 
-        const cellContentField = this._context.parameters.cellContentField.raw!;
+        const cellContentField = this.getFieldName(this._context.parameters.matrixDataSet, "cellContentField");
         const dataset = this._context.parameters.matrixDataSet;
         const grandTotalRecords: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord[] = [];
 
