@@ -1,0 +1,22 @@
+# Node modules
+node_modules/
+
+# Build outputs
+out/
+bin/
+obj/
+
+# IDE
+.vscode/
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# PCF specific
+*.pcfproj.user
