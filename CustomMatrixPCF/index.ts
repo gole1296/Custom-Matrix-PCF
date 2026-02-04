@@ -227,15 +227,20 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
         const columnSet = new Set<string>();
         const groups = new Map<string, MatrixRow[]>();
 
+        // Get column aliases for property-set fields
+        const rowHeaderCol = dataset.columns.find(col => col.alias === "rowHeaderField");
+        const columnHeaderCol = dataset.columns.find(col => col.alias === "columnHeaderField");
+        const rowGroupCol = rowGroupField ? dataset.columns.find(col => col.alias === "rowGroupField") : null;
+
         // Process each record
         dataset.sortedRecordIds.forEach(recordId => {
             const record = dataset.records[recordId];
             
-            // Use formatted values for both row and column keys to properly display option sets
-            const rowLabel = this.getFormattedValue(record, rowHeaderField);
+            // Use column aliases to get formatted values for property-sets
+            const rowLabel = rowHeaderCol ? (record.getFormattedValue(rowHeaderCol.alias) || record.getValue(rowHeaderCol.alias)?.toString() || "(Blank)") : "Unknown";
             const rowKey = rowLabel;
             
-            const columnLabel = this.getFormattedValue(record, columnHeaderField);
+            const columnLabel = columnHeaderCol ? (record.getFormattedValue(columnHeaderCol.alias) || record.getValue(columnHeaderCol.alias)?.toString() || "(Blank)") : "Unknown";
             const columnKey = columnLabel;
             columnSet.add(columnKey);
 
@@ -250,9 +255,9 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
                     isGroupChild: rowGroupField !== null
                 };
                 
-                if (rowGroupField) {
-                    const groupLabel = this.getFormattedValue(record, rowGroupField);
-                    row.groupKey = groupLabel;
+                if (rowGroupField && rowGroupCol) {
+                    const groupLabel = record.getFormattedValue(rowGroupCol.alias);
+                    row.groupKey = groupLabel || "Unknown";
                 }
                 
                 rows.set(rowKey, row);
@@ -363,9 +368,14 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
             return { value: null, formattedValue: "" };
         }
 
-        // Find column by name or alias (for property-set fields)
-        const column = dataset.columns.find(col => col.name === fieldName || col.alias === "cellContentField");
-        const values = records.map(r => this.getFieldValue(r, fieldName)).filter(v => v !== null && v !== undefined);
+        // For property-sets in datasets, always use the alias "cellContentField"
+        const column = dataset.columns.find(col => col.alias === "cellContentField");
+        if (!column) {
+            return { value: null, formattedValue: "" };
+        }
+        
+        // Use the alias to get values from records (this is required for property-sets)
+        const values = records.map(r => r.getValue("cellContentField")).filter(v => v !== null && v !== undefined);
 
         if (values.length === 0 && calculation !== CellCalculation.Count) {
             return { value: null, formattedValue: "" };
@@ -373,14 +383,18 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
 
         let result: unknown = null;
 
-        switch (calculation) {
+        // Add default to catch any issues
+        // Convert calculation to number to ensure proper enum matching
+        const calcNum = Number(calculation);
+        switch (calcNum) {
             case CellCalculation.Count:
                 result = values.length;
                 break;
             
-            case CellCalculation.Sum:
+            case CellCalculation.Sum: {
                 result = values.reduce((sum: number, val) => sum + Number(val), 0);
                 break;
+            }
             
             case CellCalculation.Average: {
                 const sum = values.reduce((sum: number, val) => sum + Number(val), 0);
@@ -403,28 +417,33 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
                     return numVal < minVal ? val : min;
                 }, values[0]);
                 break;
+            
+            default:
+                result = 0;
+                break;
         }
 
         // Format the result
         let formattedValue = String(result);
         
-        if (column && result !== null) {
+        if (column && result !== null && typeof result === "number") {
+            // Use undefined for locale to use browser default instead of invalid language ID
             if (column.dataType === "Currency") {
-                formattedValue = new Intl.NumberFormat(this._context.userSettings.languageId.toString(), {
+                formattedValue = new Intl.NumberFormat(undefined, {
                     style: 'currency',
                     currency: 'USD' // Default, could be enhanced to use org currency
-                }).format(Number(result));
+                }).format(result);
             } else if (column.dataType === "Decimal" || column.dataType === "FP") {
-                formattedValue = new Intl.NumberFormat(this._context.userSettings.languageId.toString(), {
+                formattedValue = new Intl.NumberFormat(undefined, {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
-                }).format(Number(result));
+                }).format(result);
             } else if (column.dataType === "Whole.None") {
-                formattedValue = new Intl.NumberFormat(this._context.userSettings.languageId.toString()).format(Number(result));
-            } else if (column.dataType === "DateAndTime.DateOnly" || column.dataType === "DateAndTime.DateAndTime") {
-                if (result instanceof Date) {
-                    formattedValue = result.toLocaleDateString(this._context.userSettings.languageId.toString());
-                }
+                formattedValue = new Intl.NumberFormat(undefined).format(result);
+            }
+        } else if (column && result !== null && result instanceof Date) {
+            if (column.dataType === "DateAndTime.DateOnly" || column.dataType === "DateAndTime.DateAndTime") {
+                formattedValue = result.toLocaleDateString(undefined);
             }
         }
 
