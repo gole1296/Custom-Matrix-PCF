@@ -1,0 +1,122 @@
+.custom-matrix-container {
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    font-family: "Segoe UI", "Segoe UI Web (West European)", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+    font-size: 14px;
+    color: #323130;
+}
+
+.matrix-error {
+    padding: 20px;
+    color: #a4262c;
+    background-color: #fde7e9;
+    border: 1px solid #a4262c;
+    border-radius: 2px;
+    font-weight: 600;
+}
+
+.matrix-table {
+    border-collapse: collapse;
+    width: 100%;
+    background-color: #ffffff;
+}
+
+.matrix-table th,
+.matrix-table td {
+    border: 1px solid #edebe9;
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: middle;
+    word-wrap: break-word;
+    max-width: 200px;
+}
+
+.matrix-table th {
+    background-color: #f3f2f1;
+    font-weight: 600;
+    color: #201f1e;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.matrix-header-cell {
+    background-color: #f3f2f1;
+    font-weight: 600;
+}
+
+.column-header {
+    min-width: 80px;
+    max-width: 150px;
+}
+
+.column-header-rotated {
+    height: 120px;
+    white-space: nowrap;
+    position: relative;
+}
+
+.column-header-rotated > div {
+    transform: translate(0, 51px) rotate(-45deg);
+    transform-origin: left top;
+    width: 30px;
+}
+
+.column-header-rotated > div > span {
+    padding: 5px 10px;
+}
+
+.row-group-header {
+    background-color: #e1dfdd;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+}
+
+.row-group-header:hover {
+    background-color: #d2d0ce;
+}
+
+.group-toggle {
+    display: inline-block;
+    width: 16px;
+    text-align: center;
+    margin-right: 8px;
+    font-family: monospace;
+}
+
+.row-group-child {
+    background-color: #faf9f8;
+}
+
+.row-group-child .matrix-header-cell {
+    padding-left: 30px;
+    background-color: #faf9f8;
+}
+
+.total-cell {
+    font-weight: 700;
+    background-color: #f3f2f1;
+}
+
+.group-total-cell {
+    font-weight: 700;
+    background-color: #e1dfdd;
+}
+
+.matrix-cell {
+    text-align: center;
+    min-width: 80px;
+}
+
+.empty-cell {
+    background-color: #faf9f8;
+    color: #a19f9d;
+}
+
+.loading-message {
+    padding: 20px;
+    text-align: center;
+    color: #605e5c;
+}

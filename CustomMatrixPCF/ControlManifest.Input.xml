@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<manifest>
+  <control namespace="EightyThirtyFiveSolutions" constructor="CustomMatrixPCF" version="0.0.1" display-name-key="CustomMatrixPCF" description-key="CustomMatrixPCF description" control-type="standard" >
+    <!--external-service-usage node declares whether this 3rd party PCF control is using external service or not, if yes, this control will be considered as premium and please also add the external domain it is using.
+    If it is not using any external service, please set the enabled="false" and DO NOT add any domain below. The "enabled" will be false by default.
+    Example1:
+      <external-service-usage enabled="true">
+        <domain>www.Microsoft.com</domain>
+      </external-service-usage>
+    Example2:
+      <external-service-usage enabled="false">
+      </external-service-usage>
+    -->
+    <external-service-usage enabled="false">
+      <!--UNCOMMENT TO ADD EXTERNAL DOMAINS
+      <domain></domain>
+      <domain></domain>
+      -->
+    </external-service-usage>
+    <!-- dataset node represents a set of entity records on CDS; allow more than one datasets -->
+    <data-set name="matrixDataSet" display-name-key="Matrix_Dataset" description-key="Dataset containing records for the matrix">
+    </data-set>
+    
+    <!-- Configuration properties -->
+    <property name="rowHeaderField" display-name-key="Row Header Field" description-key="Field to use for row headers" of-type="SingleLine.Text" usage="input" required="true" />
+    <property name="rowGroupField" display-name-key="Row Group Field" description-key="Optional field to group rows" of-type="SingleLine.Text" usage="input" required="false" />
+    <property name="columnHeaderField" display-name-key="Column Header Field" description-key="Field to use for column headers" of-type="SingleLine.Text" usage="input" required="true" />
+    <property name="cellContentField" display-name-key="Cell Content Field" description-key="Field to display in cells" of-type="SingleLine.Text" usage="input" required="true" />
+    <property name="cellCalculation" display-name-key="Cell Calculation" description-key="Calculation type: Count, Sum, Average, Max, Min" of-type="Enum" usage="input" required="true">
+      <value name="Count" display-name-key="Count" description-key="Count records">0</value>
+      <value name="Sum" display-name-key="Sum" description-key="Sum values">1</value>
+      <value name="Average" display-name-key="Average" description-key="Average values">2</value>
+      <value name="Max" display-name-key="Max" description-key="Maximum value">3</value>
+      <value name="Min" display-name-key="Min" description-key="Minimum value">4</value>
+    </property>
+    <property name="showColumnTotals" display-name-key="Show Column Totals" description-key="Display totals at bottom of columns" of-type="TwoOptions" usage="input" required="true" />
+    <property name="showRowTotals" display-name-key="Show Row Totals" description-key="Display totals at end of rows" of-type="TwoOptions" usage="input" required="true" />
+    
+    <resources>
+      <code path="index.ts" order="1"/>
+      <css path="css/CustomMatrixPCF.css" order="1" />
+    </resources>
+    <!-- UNCOMMENT TO ENABLE THE SPECIFIED API
+    <feature-usage>
+      <uses-feature name="Device.captureAudio" required="true" />
+      <uses-feature name="Device.captureImage" required="true" />
+      <uses-feature name="Device.captureVideo" required="true" />
+      <uses-feature name="Device.getBarcodeValue" required="true" />
+      <uses-feature name="Device.getCurrentPosition" required="true" />
+      <uses-feature name="Device.pickFile" required="true" />
+      <uses-feature name="Utility" required="true" />
+      <uses-feature name="WebAPI" required="true" />
+    </feature-usage>
+    -->
+  </control>
+</manifest>
