@@ -255,6 +255,8 @@ interface IPivotTableProps {
     valueColumn: ComponentFramework.PropertyHelper.DataSetApi.Column;
     aggregationType: 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'COUNT';
     showTotals: boolean;
+    showTitle: boolean;
+    titleText: string;
 }
 
 interface IPivotRow {
@@ -313,7 +315,7 @@ function formatValue(value: number, dataType: string, aggregationType: 'SUM' | '
     return String(value);
 }
 
-const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggregationType, showTotals }) => {
+const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggregationType, showTotals, showTitle, titleText }) => {
     const { rowKeys, columnKeys, gridData } = pivotData;
 
     // Calculate totals
@@ -549,6 +551,12 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
     return React.createElement(
         'div',
         { style: { width: '100%', height: '100%', overflow: 'auto' } },
+        showTitle && React.createElement(
+            'div',
+            { className: 'matrix-title-container' },
+            React.createElement('h2', { className: 'matrix-title' }, titleText),
+            React.createElement('div', { className: 'matrix-title-accent' })
+        ),
         React.createElement(DetailsList, {
             items: rows,
             columns: columns,
@@ -632,6 +640,7 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
         };
         
         const showTotals = context.parameters.showTotals.raw !== false;
+        const showTitle = context.parameters.showTitle.raw !== false;
         
         const config: IPivotConfig = {
             groupByRow,
@@ -651,13 +660,36 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
                 throw new Error(`Value field '${config.valueField}' not found in dataset columns`);
             }
             
+            // Get columns for title generation
+            const rowColumn = dataset.columns.find(col => col.name === config.groupByRow);
+            const columnColumn = dataset.columns.find(col => col.name === config.groupByColumn);
+            
+            // Generate title text
+            const aggregationDisplayNames: Record<string, string> = {
+                'COUNT': 'Count',
+                'SUM': 'Sum',
+                'AVG': 'Average',
+                'MIN': 'Minimum',
+                'MAX': 'Maximum'
+            };
+            
+            const tableDisplayName = dataset.getTitle() || 'Records';
+            const aggregationDisplay = aggregationDisplayNames[config.aggregationType] || config.aggregationType;
+            const valueFieldDisplay = valueColumn.displayName || config.valueField;
+            const rowFieldDisplay = rowColumn?.displayName || config.groupByRow;
+            const columnFieldDisplay = columnColumn?.displayName || config.groupByColumn;
+            
+            const titleText = `${tableDisplayName}: ${aggregationDisplay} of ${valueFieldDisplay} by ${rowFieldDisplay} and ${columnFieldDisplay}`;
+            
             // Render React component
             this._root.render(
                 React.createElement(PivotTable, { 
                     pivotData,
                     valueColumn,
                     aggregationType: config.aggregationType,
-                    showTotals
+                    showTotals,
+                    showTitle,
+                    titleText
                 })
             );
         } catch (error) {

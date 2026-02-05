@@ -79,3 +79,24 @@
 .ms-DetailsRow-cell:last-child {
     font-weight: 700;
 }
+
+/* Title styling */
+.matrix-title-container {
+    margin-bottom: 16px;
+}
+
+.matrix-title {
+    font-family: "Segoe UI", "Segoe UI Web (West European)", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+    font-size: 18px;
+    font-weight: 600;
+    color: #323130;
+    margin: 0;
+    padding: 0 0 8px 0;
+}
+
+.matrix-title-accent {
+    height: 3px;
+    background-color: #0078d4;
+    width: 100%;
+    border-radius: 2px;
+}
