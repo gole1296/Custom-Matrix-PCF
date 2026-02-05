@@ -32,18 +32,30 @@
 /* Fluent UI DetailsList styling */
 .ms-DetailsHeader {
     border-bottom: 1px solid #edebe9;
+    background-color: #f3f2f1;
 }
 
 .ms-DetailsHeader-cell {
     border-right: 1px solid #edebe9;
+    background-color: #f3f2f1;
 }
 
 .ms-DetailsHeader-cell:last-child {
     border-right: none;
 }
 
+.ms-DetailsRow {
+    background-color: #ffffff;
+}
+
 .ms-DetailsRow-cell {
     border-right: 1px solid #edebe9;
+    background-color: #ffffff;
+}
+
+.ms-DetailsRow-cell:first-child {
+    background-color: #f3f2f1;
+    font-weight: 600;
 }
 
 .ms-DetailsRow-cell:last-child {

@@ -236,6 +236,7 @@ interface IPivotTableProps {
     pivotData: IPivotData;
     valueColumn: ComponentFramework.PropertyHelper.DataSetApi.Column;
     aggregationType: 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'COUNT';
+    showTotals: boolean;
 }
 
 interface IPivotRow {
@@ -270,7 +271,7 @@ function formatValue(value: number, dataType: string): string {
     return String(value);
 }
 
-const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggregationType }) => {
+const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggregationType, showTotals }) => {
     const { rowKeys, columnKeys, gridData } = pivotData;
 
     // Calculate totals
@@ -366,6 +367,10 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
             maxWidth: 150,
             isResizable: true,
             data: 'number',
+            styles: {
+                root: { textAlign: 'center' },
+                cellTitle: { textAlign: 'center', justifyContent: 'center' }
+            },
             onRender: (item: IPivotRow) => {
                 const value = item[colKey];
                 return React.createElement(
@@ -384,7 +389,7 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
                 );
             }
         })),
-        {
+        ...(showTotals ? [{
             key: 'rowTotal',
             name: 'Total',
             fieldName: 'rowTotal',
@@ -392,6 +397,10 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
             maxWidth: 150,
             isResizable: true,
             data: 'number',
+            styles: {
+                root: { textAlign: 'center' },
+                cellTitle: { textAlign: 'center', justifyContent: 'center' }
+            },
             onRender: (item: IPivotRow) => {
                 const value = item.rowTotal;
                 return React.createElement(
@@ -409,7 +418,7 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
                         : '-'
                 );
             }
-        }
+        }] : [])
     ];
 
     // Build rows for DetailsList
@@ -427,38 +436,40 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
         return row;
     });
     
-    // Add total row
-    const totalRow: IPivotRow = { rowKey: 'TOTAL' };
-    columnKeys.forEach(colKey => {
-        totalRow[colKey] = columnTotals.get(colKey) || 0;
-    });
-    
-    // Calculate grand total
-    let grandTotal = 0;
-    let grandCount = 0;
-    rowKeys.forEach(rowKey => {
-        const rowTotal = rowTotals.get(rowKey);
-        if (rowTotal !== undefined) {
-            if (aggregationType === 'COUNT' || aggregationType === 'SUM') {
-                grandTotal += rowTotal;
-            } else if (aggregationType === 'AVG') {
-                grandTotal += rowTotal;
-                grandCount++;
-            } else if (aggregationType === 'MIN') {
-                grandTotal = grandCount === 0 ? rowTotal : Math.min(grandTotal, rowTotal);
-                grandCount++;
-            } else if (aggregationType === 'MAX') {
-                grandTotal = grandCount === 0 ? rowTotal : Math.max(grandTotal, rowTotal);
-                grandCount++;
+    // Add total row if enabled
+    if (showTotals) {
+        const totalRow: IPivotRow = { rowKey: 'TOTAL' };
+        columnKeys.forEach(colKey => {
+            totalRow[colKey] = columnTotals.get(colKey) || 0;
+        });
+        
+        // Calculate grand total
+        let grandTotal = 0;
+        let grandCount = 0;
+        rowKeys.forEach(rowKey => {
+            const rowTotal = rowTotals.get(rowKey);
+            if (rowTotal !== undefined) {
+                if (aggregationType === 'COUNT' || aggregationType === 'SUM') {
+                    grandTotal += rowTotal;
+                } else if (aggregationType === 'AVG') {
+                    grandTotal += rowTotal;
+                    grandCount++;
+                } else if (aggregationType === 'MIN') {
+                    grandTotal = grandCount === 0 ? rowTotal : Math.min(grandTotal, rowTotal);
+                    grandCount++;
+                } else if (aggregationType === 'MAX') {
+                    grandTotal = grandCount === 0 ? rowTotal : Math.max(grandTotal, rowTotal);
+                    grandCount++;
+                }
             }
+        });
+        if (aggregationType === 'AVG' && grandCount > 0) {
+            grandTotal = grandTotal / grandCount;
         }
-    });
-    if (aggregationType === 'AVG' && grandCount > 0) {
-        grandTotal = grandTotal / grandCount;
+        totalRow.rowTotal = grandTotal;
+        
+        rows.push(totalRow);
     }
-    totalRow.rowTotal = grandTotal;
-    
-    rows.push(totalRow);
 
     // Handle empty data
     if (rowKeys.length === 0 || columnKeys.length === 0) {
@@ -554,6 +565,8 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
             '4': 'MAX'
         };
         
+        const showTotals = context.parameters.showTotals.raw !== false;
+        
         const config: IPivotConfig = {
             groupByRow,
             groupByColumn,
@@ -577,7 +590,8 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
                 React.createElement(PivotTable, { 
                     pivotData,
                     valueColumn,
-                    aggregationType: config.aggregationType
+                    aggregationType: config.aggregationType,
+                    showTotals
                 })
             );
         } catch (error) {
