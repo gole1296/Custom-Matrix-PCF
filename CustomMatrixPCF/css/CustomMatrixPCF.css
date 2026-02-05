@@ -61,11 +61,21 @@
 
 .ms-DetailsRow-cell:last-child {
     border-right: none;
-    background-color: #f3f2f1;
-    font-weight: 700;
 }
 
-.ms-DetailsRow:last-child .ms-DetailsRow-cell {
+/* Total row: only first cell (row header) has gray background */
+.ms-DetailsRow:last-child .ms-DetailsRow-cell:first-child {
     font-weight: 700;
     background-color: #f3f2f1;
+}
+
+/* Total row: all other cells have white background but bold text */
+.ms-DetailsRow:last-child .ms-DetailsRow-cell:not(:first-child) {
+    font-weight: 700;
+    background-color: #ffffff;
+}
+
+/* Total column: make text bold but inherit background (white for data, gray for headers) */
+.ms-DetailsRow-cell:last-child {
+    font-weight: 700;
 }

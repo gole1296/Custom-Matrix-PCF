@@ -170,7 +170,7 @@ function transformDatasetToPivot(
     // Calculate aggregates
     const gridData = new Map<string, number>();
     cellDataMap.forEach((cellData, cellKey) => {
-        let aggregatedValue: number;
+        let aggregatedValue: number | undefined;
 
         switch (config.aggregationType) {
             case 'COUNT':
@@ -182,8 +182,11 @@ function transformDatasetToPivot(
                 break;
             
             case 'AVG':
+                // Only calculate average if we have values (exclude undefined/null)
+                // Zero values ARE included in the average
                 if (cellData.values.length === 0) {
-                    aggregatedValue = 0;
+                    // Don't add this cell to gridData - no valid values
+                    aggregatedValue = undefined;
                 } else {
                     const sum = cellData.values.reduce((sum, val) => sum + val, 0);
                     aggregatedValue = sum / cellData.values.length;
@@ -191,11 +194,11 @@ function transformDatasetToPivot(
                 break;
             
             case 'MIN':
-                aggregatedValue = Math.min(...cellData.values);
+                aggregatedValue = cellData.values.length > 0 ? Math.min(...cellData.values) : undefined;
                 break;
             
             case 'MAX':
-                aggregatedValue = Math.max(...cellData.values);
+                aggregatedValue = cellData.values.length > 0 ? Math.max(...cellData.values) : undefined;
                 break;
             
             default:
@@ -203,7 +206,10 @@ function transformDatasetToPivot(
                 break;
         }
 
-        gridData.set(cellKey, aggregatedValue);
+        // Only add to gridData if we have a valid aggregated value
+        if (aggregatedValue !== undefined) {
+            gridData.set(cellKey, aggregatedValue);
+        }
     });
 
     // Sort keys using smart comparison (handles numbers and text)
