@@ -404,7 +404,6 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
             minWidth: 150,
             isResizable: true,
             isRowHeader: true,
-            isMultiline: true,
             data: 'string',
             onRender: (item: IPivotRow) => {
                 return React.createElement(
@@ -429,7 +428,6 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
             fieldName: colKey,
             minWidth: columnWidth,
             isResizable: true,
-            isMultiline: true,
             data: 'number',
             styles: {
                 root: { textAlign: 'center' },
@@ -459,7 +457,6 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
             fieldName: 'rowTotal',
             minWidth: columnWidth,
             isResizable: true,
-            isMultiline: true,
             data: 'number',
             styles: {
                 root: { textAlign: 'center' },
