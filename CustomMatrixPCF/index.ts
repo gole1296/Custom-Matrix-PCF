@@ -334,6 +334,7 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
             if (value !== undefined) {
                 if (aggregationType === 'COUNT') {
                     colTotal += value;
+                    colCount++;
                 } else if (aggregationType === 'SUM' || aggregationType === 'AVG') {
                     colTotal += value;
                     colCount++;
@@ -368,6 +369,7 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
             if (value !== undefined) {
                 if (aggregationType === 'COUNT') {
                     rowTotal += value;
+                    rowCount++;
                 } else if (aggregationType === 'SUM' || aggregationType === 'AVG') {
                     rowTotal += value;
                     rowCount++;
