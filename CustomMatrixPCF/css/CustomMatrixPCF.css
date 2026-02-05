@@ -38,6 +38,15 @@
 .ms-DetailsHeader-cell {
     border-right: 1px solid #edebe9;
     background-color: #f3f2f1;
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.ms-DetailsHeader-cellTitle {
+    white-space: normal;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
 }
 
 .ms-DetailsHeader-cell:last-child {
