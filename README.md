@@ -19,24 +19,39 @@ The Custom Matrix PCF control transforms standard subgrid data into interactive 
 
 ### Prerequisites
 
-- Power Platform environment with maker permissions
-- Power Apps Component Framework (PCF) enabled in your environment
-- Access to create and modify solutions
+- Power Platform environment (Production, Sandbox, or Developer)
+- System Administrator or System Customizer security role
+- Power Apps Component Framework (PCF) enabled in your environment (enabled by default in most environments)
 
 ### Deployment Steps
 
-1. **Download the Solution**
-   - Download the latest managed or unmanaged solution package
+1. **Download the Managed Solution**
+   - Go to the [Releases](../../releases) page
+   - Download the latest `CustomMatrixPCF_managed.zip` file
+   - Save it to your local machine
 
-2. **Import to Your Environment**
+2. **Import the Solution**
+   
+   **Option A: Using Power Platform Admin Center**
+   - Navigate to [https://make.powerapps.com](https://make.powerapps.com)
+   - Select your target environment
+   - Go to **Solutions** in the left navigation
+   - Click **Import solution** at the top
+   - Click **Browse** and select the downloaded `CustomMatrixPCF_managed.zip` file
+   - Click **Next**, then **Import**
+   - Wait for the import to complete (usually 1-2 minutes)
+
+   **Option B: Using Power Platform CLI**
    ```powershell
-   pac solution import --path [path-to-solution-file]
+   pac solution import --path CustomMatrixPCF_managed.zip
    ```
-   Or use the Power Platform admin center to import manually
 
-3. **Enable the Control**
-   - Navigate to Settings → Administration → System Settings
-   - Under the "Previews" tab, ensure PCF controls are enabled
+3. **Verify Installation**
+   - After import completes, check for success message
+   - Navigate to **Solutions** and confirm "Custom Matrix PCF" appears in the list
+   - The control is now ready to use in your apps
+
+> **Note**: The managed solution can be safely installed alongside other solutions and will not affect existing customizations.
 
 ## Configuration
 
@@ -84,6 +99,12 @@ The Custom Matrix PCF control transforms standard subgrid data into interactive 
 - Value Field: `estimatedvalue`
 - Aggregation Type: `Average`
 
+**Example 4: Opportunities by Owner and Account**
+- Row Field: `ownerid` (Lookup)
+- Column Field: `customerid` (Lookup)
+- Value Field: `estimatedvalue`
+- Aggregation Type: `Sum`
+
 ## Field Type Support
 
 ### Supported for Row/Column Headers
@@ -93,7 +114,7 @@ The Custom Matrix PCF control transforms standard subgrid data into interactive 
 - ✅ **Two Options**: Yes/No fields
 - ✅ **Whole Numbers**: Integer fields
 - ✅ **Date/Time**: Date fields (formatted as dates)
-- ❌ **Lookup Fields**: Not supported (will display error)
+- ✅ **Lookup Fields**: All lookup types (Simple, Customer, Owner, PartyList, Regarding) - displays linked record name
 
 ### Supported for Value Fields (Aggregation)
 
@@ -142,10 +163,10 @@ The control intelligently formats values based on the source field's data type:
 
 ### Field Limitations
 
-1. **Lookup Fields Cannot Be Used for Grouping**
-   - Lookup fields (Simple, Customer, Owner, PartyList, Regarding) are not supported for row or column headers
-   - Error message will display if attempted
-   - **Workaround**: Use a text field that copies the lookup's display value
+1. **Lookup Field Display**
+   - Lookup fields show the display name (primary name field) of the linked record
+   - Groups by the text value, so different records with the same name are grouped together
+   - If a lookup field references deleted records, they may show as "(Blank)"
 
 2. **Data Type Restrictions**
    - Sum and Average require numeric or currency fields
@@ -208,9 +229,6 @@ The control uses Fluent UI components and follows Microsoft's design system:
 
 ### Common Issues
 
-**Error: "Row field 'fieldname' is a Lookup field, which is not supported"**
-- Solution: Choose a non-lookup field for grouping
-
 **Error: "Aggregation type 'Sum' requires a numeric or currency field"**
 - Solution: Select a compatible aggregation type or change the value field
 
@@ -228,13 +246,31 @@ The control uses Fluent UI components and follows Microsoft's design system:
 - For many columns, horizontal scrolling is enabled
 - Columns are resizable by dragging the header borders
 
-## Development
+**Control not appearing in component list**
+- Verify the solution imported successfully without errors
+- Check that the app has been published after adding the control
+- Ensure you're looking in the correct environment
+
+## Unmanaged Solution (For Developers)
+
+If you need to customize the control or prefer an unmanaged solution for development purposes:
+
+1. Download `CustomMatrixPCF_unmanaged.zip` from the [Releases](../../releases) page
+2. Import using the same steps as the managed solution
+3. You can now modify the control's properties and republish
+
+> **Warning**: Unmanaged solutions should only be used in development/test environments. Always use managed solutions in production.
+
+## Development & Contributing
 
 ### Building from Source
 
+For developers who want to contribute or customize the control:
+
 ```powershell
 # Clone the repository
-git clone [repository-url]
+git clone https://github.com/gole1296/Custom-Matrix-PCF.git
+cd Custom-Matrix-PCF
 
 # Install dependencies
 npm install
@@ -253,24 +289,37 @@ npm start watch
 pac pcf push --publisher-prefix [your-prefix]
 ```
 
+### Creating a Solution Package
+
+```powershell
+# Create managed solution
+msbuild /p:configuration=Release
+
+# Solution will be in bin/Release folder
+```
+
 ## Version History
 
-### Version 0.1.0
+### Version 0.1.0 (Current)
 - Initial release
 - Multi-dimensional pivot table functionality
 - Support for 5 aggregation types (Count, Sum, Average, Min, Max)
+- Support for all field types including lookup fields for row/column headers
 - Auto-calculated row and column totals
-- Smart data type formatting
+- Smart data type formatting (currency, decimals, dates, etc.)
 - Dynamic title generation with accent bar
-- Configurable title and totals display
+- Configurable title and totals display options
+- Fluent UI integration with responsive design
 
 ## Support & Feedback
 
-For issues, questions, or feature requests, please contact the development team or submit an issue in the repository.
+- **Issues**: Report bugs or request features on [GitHub Issues](https://github.com/gole1296/Custom-Matrix-PCF/issues)
+- **Discussions**: Ask questions or share ideas on [GitHub Discussions](https://github.com/gole1296/Custom-Matrix-PCF/discussions)
+- **Documentation**: Full documentation available in this README
 
 ## License
 
-[Specify your license here]
+MIT License - Feel free to use and modify for your organization's needs.
 
 ## Credits
 

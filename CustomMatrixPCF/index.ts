@@ -69,18 +69,6 @@ function transformDatasetToPivot(
         throw new Error(`Value field '${config.valueField}' not found in dataset columns`);
     }
 
-    // Check for Lookup fields and reject them
-    if (rowColumn.dataType === "Lookup.Simple" || rowColumn.dataType === "Lookup.Customer" || 
-        rowColumn.dataType === "Lookup.Owner" || rowColumn.dataType === "Lookup.PartyList" ||
-        rowColumn.dataType === "Lookup.Regarding") {
-        throw new Error(`Row field '${config.groupByRow}' is a Lookup field, which is not supported. Please select a different field.`);
-    }
-    if (columnColumn.dataType === "Lookup.Simple" || columnColumn.dataType === "Lookup.Customer" || 
-        columnColumn.dataType === "Lookup.Owner" || columnColumn.dataType === "Lookup.PartyList" ||
-        columnColumn.dataType === "Lookup.Regarding") {
-        throw new Error(`Column field '${config.groupByColumn}' is a Lookup field, which is not supported. Please select a different field.`);
-    }
-
     // Validate valueField data type based on aggregation type
     const isNumericField = valueColumn.dataType === "Whole.None" || 
                            valueColumn.dataType === "Decimal" || 
@@ -110,20 +98,26 @@ function transformDatasetToPivot(
     dataset.sortedRecordIds.forEach(recordId => {
         const record = dataset.records[recordId];
         
-        // Get row key (use formatted value for OptionSets, raw value for others)
+        // Get row key (use formatted value for OptionSets and Lookups, raw value for others)
         let rowKey: string;
         if (rowColumn.dataType === "OptionSet" || rowColumn.dataType === "TwoOptions" || 
-            rowColumn.dataType === "MultiSelectOptionSet") {
+            rowColumn.dataType === "MultiSelectOptionSet" ||
+            rowColumn.dataType === "Lookup.Simple" || rowColumn.dataType === "Lookup.Customer" ||
+            rowColumn.dataType === "Lookup.Owner" || rowColumn.dataType === "Lookup.PartyList" ||
+            rowColumn.dataType === "Lookup.Regarding") {
             rowKey = record.getFormattedValue(config.groupByRow) || "(Blank)";
         } else {
             const rawValue = record.getValue(config.groupByRow);
             rowKey = rawValue !== null && rawValue !== undefined ? String(rawValue) : "(Blank)";
         }
 
-        // Get column key (use formatted value for OptionSets, raw value for others)
+        // Get column key (use formatted value for OptionSets and Lookups, raw value for others)
         let columnKey: string;
         if (columnColumn.dataType === "OptionSet" || columnColumn.dataType === "TwoOptions" || 
-            columnColumn.dataType === "MultiSelectOptionSet") {
+            columnColumn.dataType === "MultiSelectOptionSet" ||
+            columnColumn.dataType === "Lookup.Simple" || columnColumn.dataType === "Lookup.Customer" ||
+            columnColumn.dataType === "Lookup.Owner" || columnColumn.dataType === "Lookup.PartyList" ||
+            columnColumn.dataType === "Lookup.Regarding") {
             columnKey = record.getFormattedValue(config.groupByColumn) || "(Blank)";
         } else {
             const rawValue = record.getValue(config.groupByColumn);
