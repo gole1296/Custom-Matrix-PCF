@@ -676,8 +676,11 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
             // Get the entity display name from the dataset
             // The entity reference name contains the plural display name
             let tableDisplayName = 'Records';
-            if ((dataset as any).getEntityReferenceName) {
-                tableDisplayName = (dataset as any).getEntityReferenceName();
+            const datasetExt = dataset as ComponentFramework.PropertyTypes.DataSet & {
+                getEntityReferenceName?: () => string;
+            };
+            if (datasetExt.getEntityReferenceName) {
+                tableDisplayName = datasetExt.getEntityReferenceName();
             } else if (dataset.getTargetEntityType) {
                 const entityType = dataset.getTargetEntityType();
                 // Format the logical name (e.g., "contact" -> "Contacts")
