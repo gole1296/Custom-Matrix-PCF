@@ -153,8 +153,20 @@ function transformDatasetToPivot(
 
         // Convert value to number for aggregation
         let numericValue: number;
-        if (isDateField && rawValue instanceof Date) {
-            numericValue = rawValue.getTime();
+        if (isDateField) {
+            // Handle date fields - PCF may return Date objects or ISO strings
+            let dateValue: Date;
+            if (rawValue instanceof Date) {
+                dateValue = rawValue;
+            } else if (typeof rawValue === 'string') {
+                dateValue = new Date(rawValue);
+            } else if (typeof rawValue === 'number') {
+                dateValue = new Date(rawValue);
+            } else {
+                // Fallback: try to convert to string first, then to date
+                dateValue = new Date(String(rawValue));
+            }
+            numericValue = dateValue.getTime();
         } else {
             numericValue = Number(rawValue);
         }
@@ -293,7 +305,10 @@ function formatValue(value: number, dataType: string, aggregationType: 'SUM' | '
             maximumFractionDigits: 0
         }).format(value);
     } else if (dataType === "DateAndTime.DateOnly" || dataType === "DateAndTime.DateAndTime") {
-        return new Date(value).toLocaleDateString(undefined);
+        // Value is stored as milliseconds timestamp, convert back to Date for display
+        // Using toLocaleDateString for both date-only and datetime fields per requirements
+        const dateObj = new Date(value);
+        return dateObj.toLocaleDateString(undefined);
     }
     return String(value);
 }
