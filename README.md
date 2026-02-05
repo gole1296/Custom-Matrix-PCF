@@ -4,7 +4,7 @@ A powerful pivot table/matrix control for Power Platform subgrids that enables d
 
 ## Overview
 
-![Custom Matrix PCf Control](Custom Matrix Screenshot.png)
+![Custom Matrix PCF Control](Custom-Matrix-Screenshot.png)
 
 The Custom Matrix PCF control transforms standard subgrid data into interactive matrix visualizations, allowing users to analyze data across two dimensions with various aggregation methods. Perfect for dashboards, reports, and data analysis scenarios where you need to see patterns and relationships in your data.
 
