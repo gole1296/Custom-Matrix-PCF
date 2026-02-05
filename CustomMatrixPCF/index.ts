@@ -1,63 +1,331 @@
 import { IInputs, IOutputs } from "./generated/ManifestTypes";
-import DataSetInterfaces = ComponentFramework.PropertyHelper.DataSetApi;
-type DataSet = ComponentFramework.PropertyTypes.DataSet;
+import * as React from "react";
+import { createRoot, Root } from "react-dom/client";
+import { DetailsList, IColumn, DetailsListLayoutMode, SelectionMode } from "@fluentui/react/lib/DetailsList";
+import { Stack } from "@fluentui/react/lib/Stack";
+import { Text } from "@fluentui/react/lib/Text";
 
-enum CellCalculation {
-    Count = 0,
-    Sum = 1,
-    Average = 2,
-    Max = 3,
-    Min = 4
+// ============================================================================
+// INTERFACES
+// ============================================================================
+
+interface IPivotConfig {
+    groupByRow: string;
+    groupByColumn: string;
+    valueField: string;
+    aggregationType: 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'COUNT';
 }
 
-interface MatrixCell {
-    records: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord[];
-    value: unknown;
-    formattedValue: string;
+interface ICellData {
+    values: number[];
+    count: number;
 }
 
-interface MatrixRow {
-    rowKey: string;
-    rowLabel: string;
-    cells: Map<string, MatrixCell>;
-    isGroup?: boolean;
-    isGroupChild?: boolean;
-    groupKey?: string;
-    isExpanded?: boolean;
+interface IPivotData {
+    rowKeys: string[];
+    columnKeys: string[];
+    gridData: Map<string, number>;
 }
 
-export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInputs, IOutputs> {
-    private _container: HTMLDivElement;
-    private _context: ComponentFramework.Context<IInputs>;
-    private _collapsedGroups: Set<string> = new Set<string>();
+// ============================================================================
+// PIVOT TRANSFORMATION LOGIC
+// ============================================================================
 
-    constructor() {
-        // Empty
+/**
+ * Transforms a PCF dataset into pivot table structure
+ * @param dataset The PCF dataset from context.parameters
+ * @param config Configuration for grouping and aggregation
+ * @returns Structured pivot data with row keys, column keys, and aggregated values
+ */
+function transformDatasetToPivot(
+    dataset: ComponentFramework.PropertyTypes.DataSet,
+    config: IPivotConfig
+): IPivotData {
+    // Validate dataset
+    if (!dataset || !dataset.columns || dataset.columns.length === 0) {
+        throw new Error("Dataset is not properly configured");
     }
 
-    /**
-     * Smart comparison for sorting that handles numbers, text, and mixed values
-     */
-    private smartCompare(a: string, b: string): number {
-        // Try parsing as numbers
+    if (!dataset.sortedRecordIds || dataset.sortedRecordIds.length === 0) {
+        return {
+            rowKeys: [],
+            columnKeys: [],
+            gridData: new Map<string, number>()
+        };
+    }
+
+    // Find the column definitions
+    const rowColumn = dataset.columns.find(col => col.name === config.groupByRow);
+    const columnColumn = dataset.columns.find(col => col.name === config.groupByColumn);
+    const valueColumn = dataset.columns.find(col => col.name === config.valueField);
+
+    if (!rowColumn) {
+        throw new Error(`Row field '${config.groupByRow}' not found in dataset columns`);
+    }
+    if (!columnColumn) {
+        throw new Error(`Column field '${config.groupByColumn}' not found in dataset columns`);
+    }
+    if (!valueColumn) {
+        throw new Error(`Value field '${config.valueField}' not found in dataset columns`);
+    }
+
+    // Check for Lookup fields and reject them
+    if (rowColumn.dataType === "Lookup.Simple" || rowColumn.dataType === "Lookup.Customer" || 
+        rowColumn.dataType === "Lookup.Owner" || rowColumn.dataType === "Lookup.PartyList" ||
+        rowColumn.dataType === "Lookup.Regarding") {
+        throw new Error(`Row field '${config.groupByRow}' is a Lookup field, which is not supported. Please select a different field.`);
+    }
+    if (columnColumn.dataType === "Lookup.Simple" || columnColumn.dataType === "Lookup.Customer" || 
+        columnColumn.dataType === "Lookup.Owner" || columnColumn.dataType === "Lookup.PartyList" ||
+        columnColumn.dataType === "Lookup.Regarding") {
+        throw new Error(`Column field '${config.groupByColumn}' is a Lookup field, which is not supported. Please select a different field.`);
+    }
+
+    // Validate valueField data type based on aggregation type
+    const isNumericField = valueColumn.dataType === "Whole.None" || 
+                           valueColumn.dataType === "Decimal" || 
+                           valueColumn.dataType === "Currency" || 
+                           valueColumn.dataType === "FP";
+    const isDateField = valueColumn.dataType === "DateAndTime.DateOnly" || 
+                        valueColumn.dataType === "DateAndTime.DateAndTime";
+
+    if (config.aggregationType === 'SUM' || config.aggregationType === 'AVG') {
+        if (!isNumericField) {
+            throw new Error(`Aggregation type '${config.aggregationType}' requires a numeric or currency field. Field '${config.valueField}' is of type '${valueColumn.dataType}'.`);
+        }
+    }
+
+    if (config.aggregationType === 'MIN' || config.aggregationType === 'MAX') {
+        if (!isNumericField && !isDateField) {
+            throw new Error(`Aggregation type '${config.aggregationType}' requires a numeric, currency, or date field. Field '${config.valueField}' is of type '${valueColumn.dataType}'.`);
+        }
+    }
+
+    // Build pivot structure
+    const rowSet = new Set<string>();
+    const columnSet = new Set<string>();
+    const cellDataMap = new Map<string, ICellData>();
+
+    // Iterate through sorted records
+    dataset.sortedRecordIds.forEach(recordId => {
+        const record = dataset.records[recordId];
+        
+        // Get row key (use formatted value for OptionSets, raw value for others)
+        let rowKey: string;
+        if (rowColumn.dataType === "OptionSet" || rowColumn.dataType === "TwoOptions" || 
+            rowColumn.dataType === "MultiSelectOptionSet") {
+            rowKey = record.getFormattedValue(config.groupByRow) || "(Blank)";
+        } else {
+            const rawValue = record.getValue(config.groupByRow);
+            rowKey = rawValue !== null && rawValue !== undefined ? String(rawValue) : "(Blank)";
+        }
+
+        // Get column key (use formatted value for OptionSets, raw value for others)
+        let columnKey: string;
+        if (columnColumn.dataType === "OptionSet" || columnColumn.dataType === "TwoOptions" || 
+            columnColumn.dataType === "MultiSelectOptionSet") {
+            columnKey = record.getFormattedValue(config.groupByColumn) || "(Blank)";
+        } else {
+            const rawValue = record.getValue(config.groupByColumn);
+            columnKey = rawValue !== null && rawValue !== undefined ? String(rawValue) : "(Blank)";
+        }
+
+        // Get value for aggregation
+        const rawValue = record.getValue(config.valueField);
+        
+        // Skip null/undefined values for aggregation (except for COUNT)
+        if (rawValue === null || rawValue === undefined) {
+            if (config.aggregationType === 'COUNT') {
+                // For COUNT, we still count the record even if value is null
+                rowSet.add(rowKey);
+                columnSet.add(columnKey);
+                
+                const cellKey = `${rowKey}_|_${columnKey}`;
+                const cellData = cellDataMap.get(cellKey) || { values: [], count: 0 };
+                cellData.count++;
+                cellDataMap.set(cellKey, cellData);
+            }
+            return;
+        }
+
+        rowSet.add(rowKey);
+        columnSet.add(columnKey);
+
+        // Convert value to number for aggregation
+        let numericValue: number;
+        if (isDateField && rawValue instanceof Date) {
+            numericValue = rawValue.getTime();
+        } else {
+            numericValue = Number(rawValue);
+        }
+
+        // Store value in cell data
+        const cellKey = `${rowKey}_|_${columnKey}`;
+        const cellData = cellDataMap.get(cellKey) || { values: [], count: 0 };
+        cellData.values.push(numericValue);
+        cellData.count++;
+        cellDataMap.set(cellKey, cellData);
+    });
+
+    // Calculate aggregates
+    const gridData = new Map<string, number>();
+    cellDataMap.forEach((cellData, cellKey) => {
+        let aggregatedValue: number;
+
+        switch (config.aggregationType) {
+            case 'COUNT':
+                aggregatedValue = cellData.count;
+                break;
+            
+            case 'SUM':
+                aggregatedValue = cellData.values.reduce((sum, val) => sum + val, 0);
+                break;
+            
+            case 'AVG':
+                if (cellData.values.length === 0) {
+                    aggregatedValue = 0;
+                } else {
+                    const sum = cellData.values.reduce((sum, val) => sum + val, 0);
+                    aggregatedValue = sum / cellData.values.length;
+                }
+                break;
+            
+            case 'MIN':
+                aggregatedValue = Math.min(...cellData.values);
+                break;
+            
+            case 'MAX':
+                aggregatedValue = Math.max(...cellData.values);
+                break;
+            
+            default:
+                aggregatedValue = 0;
+                break;
+        }
+
+        gridData.set(cellKey, aggregatedValue);
+    });
+
+    // Sort keys using smart comparison (handles numbers and text)
+    const smartSort = (a: string, b: string): number => {
         const aNum = Number(a);
         const bNum = Number(b);
         
-        // If both are valid numbers, sort numerically
         if (!isNaN(aNum) && !isNaN(bNum)) {
             return aNum - bNum;
         }
         
-        // Otherwise, sort alphabetically with locale support
         return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+    };
+
+    const rowKeys = Array.from(rowSet).sort(smartSort);
+    const columnKeys = Array.from(columnSet).sort(smartSort);
+
+    return {
+        rowKeys,
+        columnKeys,
+        gridData
+    };
+}
+
+// ============================================================================
+// REACT COMPONENT
+// ============================================================================
+
+interface IPivotTableProps {
+    pivotData: IPivotData;
+}
+
+interface IPivotRow {
+    rowKey: string;
+    [key: string]: string | number;
+}
+
+const PivotTable: React.FC<IPivotTableProps> = ({ pivotData }) => {
+    const { rowKeys, columnKeys, gridData } = pivotData;
+
+    // Build columns for DetailsList
+    const columns: IColumn[] = [
+        {
+            key: 'rowHeader',
+            name: '',
+            fieldName: 'rowKey',
+            minWidth: 150,
+            maxWidth: 250,
+            isResizable: true,
+            isRowHeader: true,
+            data: 'string',
+            onRender: (item: IPivotRow) => {
+                return React.createElement(
+                    Text,
+                    { variant: "medium", style: { fontWeight: 600 } },
+                    item.rowKey
+                );
+            }
+        },
+        ...columnKeys.map((colKey, index) => ({
+            key: `col_${index}`,
+            name: colKey,
+            fieldName: colKey,
+            minWidth: 100,
+            maxWidth: 150,
+            isResizable: true,
+            data: 'number',
+            onRender: (item: IPivotRow) => {
+                const value = item[colKey];
+                return React.createElement(
+                    Text,
+                    { variant: "medium", style: { textAlign: 'right', display: 'block' } },
+                    value !== undefined && value !== null ? value : '-'
+                );
+            }
+        }))
+    ];
+
+    // Build rows for DetailsList
+    const rows: IPivotRow[] = rowKeys.map(rowKey => {
+        const row: IPivotRow = { rowKey };
+        
+        columnKeys.forEach(colKey => {
+            const cellKey = `${rowKey}_|_${colKey}`;
+            const value = gridData.get(cellKey);
+            row[colKey] = value !== undefined ? value : 0;
+        });
+        
+        return row;
+    });
+
+    // Handle empty data
+    if (rowKeys.length === 0 || columnKeys.length === 0) {
+        return React.createElement(
+            Stack,
+            { horizontalAlign: "center", verticalAlign: "center", style: { padding: 20 } },
+            React.createElement(Text, { variant: "large" }, "No data to display")
+        );
     }
 
-    /**
-     * Get field name from dataset property-set
-     */
-    private getFieldName(dataset: ComponentFramework.PropertyTypes.DataSet, alias: string): string {
-        return dataset.columns.find(col => col.alias === alias)?.name || "";
-    }
+    return React.createElement(
+        'div',
+        { style: { width: '100%', height: '100%', overflow: 'auto' } },
+        React.createElement(DetailsList, {
+            items: rows,
+            columns: columns,
+            layoutMode: DetailsListLayoutMode.justified,
+            selectionMode: SelectionMode.none,
+            isHeaderVisible: true,
+            compact: false
+        })
+    );
+};
+
+// ============================================================================
+// PCF CONTROL CLASS
+// ============================================================================
+
+export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInputs, IOutputs> {
+    private _container: HTMLDivElement;
+    private _context: ComponentFramework.Context<IInputs>;
+    private _root: Root | undefined;
 
     public init(
         context: ComponentFramework.Context<IInputs>,
@@ -67,701 +335,90 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
     ): void {
         this._container = container;
         this._context = context;
-        
-        // Restore collapsed groups from state
-        if (state && state.collapsedGroups) {
-            this._collapsedGroups = new Set(JSON.parse(state.collapsedGroups as string));
-        }
+        this._root = createRoot(container);
     }
 
     public updateView(context: ComponentFramework.Context<IInputs>): void {
         this._context = context;
         
-        // Clear container
-        while (this._container.firstChild) {
-            this._container.removeChild(this._container.firstChild);
-        }
-
-        const mainDiv = document.createElement("div");
-        mainDiv.className = "custom-matrix-container";
-
-        // Validate inputs
-        const validationError = this.validateInputs(context);
-        if (validationError) {
-            mainDiv.innerHTML = `<div class="matrix-error">${validationError}</div>`;
-            this._container.appendChild(mainDiv);
+        if (!this._root) {
             return;
         }
 
+        const dataset = context.parameters.sampleDataSet;
+        
         // Check if dataset is loaded
-        const dataset = context.parameters.matrixDataSet;
-        if (!dataset || !dataset.sortedRecordIds || dataset.sortedRecordIds.length === 0) {
-            mainDiv.innerHTML = '<div class="loading-message">No records to display</div>';
-            this._container.appendChild(mainDiv);
+        if (!dataset || !dataset.columns || dataset.columns.length === 0) {
+            this._root.render(
+                React.createElement(Stack, { 
+                    horizontalAlign: "center", 
+                    verticalAlign: "center", 
+                    style: { padding: 20 } 
+                },
+                    React.createElement(Text, { variant: "large" }, "Dataset not configured")
+                )
+            );
             return;
         }
 
-        // Render the matrix
+        if (!dataset.sortedRecordIds || dataset.sortedRecordIds.length === 0) {
+            this._root.render(
+                React.createElement(Stack, { 
+                    horizontalAlign: "center", 
+                    verticalAlign: "center", 
+                    style: { padding: 20 } 
+                },
+                    React.createElement(Text, { variant: "large" }, "No records to display")
+                )
+            );
+            return;
+        }
+
+        // Get configuration from input properties
+        const groupByRow = context.parameters.groupByRow.raw || "";
+        const groupByColumn = context.parameters.groupByColumn.raw || "";
+        const valueField = context.parameters.valueField.raw || "";
+        const aggregationTypeValue = context.parameters.aggregationType.raw;
+        
+        // Map enum value to aggregation type
+        const aggregationTypeMap: Record<string, 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX'> = {
+            '0': 'COUNT',
+            '1': 'SUM',
+            '2': 'AVG',
+            '3': 'MIN',
+            '4': 'MAX'
+        };
+        
+        const config: IPivotConfig = {
+            groupByRow,
+            groupByColumn,
+            valueField,
+            aggregationType: aggregationTypeMap[aggregationTypeValue] || 'COUNT'
+        };
+
         try {
-            const matrixTable = this.buildMatrix(context);
-            mainDiv.appendChild(matrixTable);
+            // Transform dataset to pivot structure
+            const pivotData = transformDatasetToPivot(dataset, config);
+            
+            // Render React component
+            this._root.render(
+                React.createElement(PivotTable, { pivotData })
+            );
         } catch (error) {
-            mainDiv.innerHTML = `<div class="matrix-error">Error rendering matrix: ${error instanceof Error ? error.message : String(error)}</div>`;
+            // Display error message
+            this._root.render(
+                React.createElement(Stack, { 
+                    horizontalAlign: "center", 
+                    verticalAlign: "center", 
+                    style: { padding: 20 } 
+                },
+                    React.createElement(Text, { 
+                        variant: "large", 
+                        style: { color: '#a4262c' } 
+                    }, `Error: ${error instanceof Error ? error.message : String(error)}`)
+                )
+            );
         }
-
-        this._container.appendChild(mainDiv);
-    }
-
-    private validateInputs(context: ComponentFramework.Context<IInputs>): string | null {
-        const dataset = context.parameters.matrixDataSet;
-        
-        // Check if dataset and columns are available
-        if (!dataset || !dataset.columns || dataset.columns.length === 0) {
-            return "Dataset not properly configured";
-        }
-
-        // Get field names from property-sets
-        const rowHeaderCol = dataset.columns.find(col => col.alias === "rowHeaderField");
-        const columnHeaderCol = dataset.columns.find(col => col.alias === "columnHeaderField");
-        const cellContentCol = dataset.columns.find(col => col.alias === "cellContentField");
-        
-        if (!rowHeaderCol) {
-            return "Row Header Field is required";
-        }
-        if (!columnHeaderCol) {
-            return "Column Header Field is required";
-        }
-        if (!cellContentCol) {
-            return "Cell Content Field is required";
-        }
-
-        const calculation = context.parameters.cellCalculation.raw;
-        if (calculation === null || calculation === undefined) {
-            return "Cell Calculation is required";
-        }
-
-        // Validate calculation type against field type
-        const dataType = cellContentCol.dataType;
-        const calcType = (calculation as unknown) as CellCalculation;
-
-        // Validate field type compatibility with calculation
-        if (calcType === CellCalculation.Sum || calcType === CellCalculation.Average) {
-            if (dataType !== "Whole.None" && 
-                dataType !== "Decimal" && 
-                dataType !== "Currency" && 
-                dataType !== "FP") {
-                return `Cannot perform ${CellCalculation[calcType]} calculation on field type ${dataType}. Only numeric and currency fields are supported for Sum and Average.`;
-            }
-        }
-
-        if (calcType === CellCalculation.Max || calcType === CellCalculation.Min) {
-            if (dataType !== "Whole.None" && 
-                dataType !== "Decimal" && 
-                dataType !== "Currency" && 
-                dataType !== "FP" &&
-                dataType !== "DateAndTime.DateOnly" &&
-                dataType !== "DateAndTime.DateAndTime") {
-                return `Cannot perform ${CellCalculation[calcType]} calculation on field type ${dataType}. Only numeric, currency, and date fields are supported for Max and Min.`;
-            }
-        }
-
-        return null;
-    }
-
-    private buildMatrix(context: ComponentFramework.Context<IInputs>): HTMLTableElement {
-        const dataset = context.parameters.matrixDataSet;
-        
-        // Get field names from property-sets (columns)
-        const rowHeaderField = dataset.columns.find(col => col.alias === "rowHeaderField")?.name || "";
-        const columnHeaderField = dataset.columns.find(col => col.alias === "columnHeaderField")?.name || "";
-        const cellContentField = dataset.columns.find(col => col.alias === "cellContentField")?.name || "";
-        const rowGroupCol = dataset.columns.find(col => col.alias === "rowGroupField");
-        const rowGroupField = rowGroupCol ? rowGroupCol.name : null;
-        const calculation = (context.parameters.cellCalculation.raw as unknown) as CellCalculation;
-        const showColumnTotals = context.parameters.showColumnTotals.raw;
-        const showRowTotals = context.parameters.showRowTotals.raw;
-
-        // Build data structure
-        const { rows, columns, groups } = this.processDataset(
-            dataset,
-            rowHeaderField,
-            columnHeaderField,
-            cellContentField,
-            rowGroupField,
-            calculation
-        );
-
-        // Create table
-        const table = document.createElement("table");
-        table.className = "matrix-table";
-
-        // Create header row
-        const headerRow = this.createHeaderRow(columns, showRowTotals, columnHeaderField);
-        table.appendChild(headerRow);
-
-        // Create data rows
-        if (rowGroupField && groups.size > 0) {
-            this.createGroupedRows(table, rows, groups, columns, calculation, showRowTotals);
-        } else {
-            this.createDataRows(table, rows, columns, calculation, showRowTotals);
-        }
-
-        // Create totals row
-        if (showColumnTotals) {
-            const totalsRow = this.createTotalsRow(rows, columns, calculation, showRowTotals);
-            table.appendChild(totalsRow);
-        }
-
-        return table;
-    }
-
-    private processDataset(
-        dataset: DataSet,
-        rowHeaderField: string,
-        columnHeaderField: string,
-        cellContentField: string,
-        rowGroupField: string | null,
-        calculation: CellCalculation
-    ): { rows: Map<string, MatrixRow>, columns: string[], groups: Map<string, MatrixRow[]> } {
-        const rows = new Map<string, MatrixRow>();
-        const columnSet = new Set<string>();
-        const groups = new Map<string, MatrixRow[]>();
-
-        // Get column aliases for property-set fields
-        const rowHeaderCol = dataset.columns.find(col => col.alias === "rowHeaderField");
-        const columnHeaderCol = dataset.columns.find(col => col.alias === "columnHeaderField");
-        const rowGroupCol = rowGroupField ? dataset.columns.find(col => col.alias === "rowGroupField") : null;
-
-        // Process each record
-        dataset.sortedRecordIds.forEach(recordId => {
-            const record = dataset.records[recordId];
-            
-            // Use column aliases to get formatted values for property-sets
-            const rowLabel = rowHeaderCol ? (record.getFormattedValue(rowHeaderCol.alias) || record.getValue(rowHeaderCol.alias)?.toString() || "(Blank)") : "Unknown";
-            const rowKey = rowLabel;
-            
-            const columnLabel = columnHeaderCol ? (record.getFormattedValue(columnHeaderCol.alias) || record.getValue(columnHeaderCol.alias)?.toString() || "(Blank)") : "Unknown";
-            const columnKey = columnLabel;
-            columnSet.add(columnKey);
-
-            // Get or create row
-            let row = rows.get(rowKey);
-            if (!row) {
-                row = {
-                    rowKey: rowKey,
-                    rowLabel: rowLabel,
-                    cells: new Map<string, MatrixCell>(),
-                    isGroup: false,
-                    isGroupChild: rowGroupField !== null
-                };
-                
-                if (rowGroupField && rowGroupCol) {
-                    const groupLabel = record.getFormattedValue(rowGroupCol.alias);
-                    row.groupKey = groupLabel || "Unknown";
-                }
-                
-                rows.set(rowKey, row);
-            }
-
-            // Get or create cell
-            let cell = row.cells.get(columnKey);
-            if (!cell) {
-                cell = {
-                    records: [],
-                    value: null,
-                    formattedValue: ""
-                };
-                row.cells.set(columnKey, cell);
-            }
-
-            cell.records.push(record);
-        });
-
-        // Build groups if row grouping is enabled
-        if (rowGroupField) {
-            const groupMap = new Map<string, MatrixRow[]>();
-            
-            rows.forEach(row => {
-                if (row.groupKey) {
-                    if (!groupMap.has(row.groupKey)) {
-                        groupMap.set(row.groupKey, []);
-                    }
-                    groupMap.get(row.groupKey)!.push(row);
-                }
-            });
-
-            // Create group header rows
-            groupMap.forEach((groupRows, groupKey) => {
-                const groupRow: MatrixRow = {
-                    rowKey: `group_${groupKey}`,
-                    rowLabel: groupKey,
-                    cells: new Map<string, MatrixCell>(),
-                    isGroup: true,
-                    isExpanded: !this._collapsedGroups.has(groupKey)
-                };
-
-                // Aggregate group data
-                columnSet.forEach(columnKey => {
-                    const cellRecords: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord[] = [];
-                    groupRows.forEach(row => {
-                        const cell = row.cells.get(columnKey);
-                        if (cell) {
-                            cellRecords.push(...cell.records);
-                        }
-                    });
-
-                    if (cellRecords.length > 0) {
-                        groupRow.cells.set(columnKey, {
-                            records: cellRecords,
-                            value: null,
-                            formattedValue: ""
-                        });
-                    }
-                });
-
-                groups.set(groupKey, groupRows);
-            });
-        }
-
-        // Smart sort columns (handles numbers and text)
-        const columns = Array.from(columnSet).sort((a, b) => this.smartCompare(a, b));
-
-        // Calculate cell values
-        rows.forEach(row => {
-            row.cells.forEach((cell, columnKey) => {
-                const result = this.calculateCellValue(cell.records, cellContentField, calculation, dataset);
-                cell.value = result.value;
-                cell.formattedValue = result.formattedValue;
-            });
-        });
-
-        // Calculate group totals
-        groups.forEach((groupRows, groupKey) => {
-            const groupRow = rows.get(`group_${groupKey}`);
-            if (groupRow) {
-                groupRow.cells.forEach((cell, columnKey) => {
-                    const result = this.calculateCellValue(cell.records, cellContentField, calculation, dataset);
-                    cell.value = result.value;
-                    cell.formattedValue = result.formattedValue;
-                });
-            }
-        });
-
-        return { rows, columns, groups };
-    }
-
-    private getFieldValue(record: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord, fieldName: string): unknown {
-        return record.getValue(fieldName);
-    }
-
-    private getFormattedValue(record: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord, fieldName: string): string {
-        return record.getFormattedValue(fieldName) || String(record.getValue(fieldName) || "");
-    }
-
-    private calculateCellValue(
-        records: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord[],
-        fieldName: string,
-        calculation: CellCalculation,
-        dataset: DataSet
-    ): { value: unknown, formattedValue: string } {
-        if (records.length === 0) {
-            return { value: null, formattedValue: "" };
-        }
-
-        // For property-sets in datasets, always use the alias "cellContentField"
-        const column = dataset.columns.find(col => col.alias === "cellContentField");
-        if (!column) {
-            return { value: null, formattedValue: "" };
-        }
-        
-        // Use the alias to get values from records (this is required for property-sets)
-        const values = records.map(r => r.getValue("cellContentField")).filter(v => v !== null && v !== undefined);
-
-        if (values.length === 0 && calculation !== CellCalculation.Count) {
-            return { value: null, formattedValue: "" };
-        }
-
-        let result: unknown = null;
-
-        // Add default to catch any issues
-        // Convert calculation to number to ensure proper enum matching
-        const calcNum = Number(calculation);
-        switch (calcNum) {
-            case CellCalculation.Count:
-                result = values.length;
-                break;
-            
-            case CellCalculation.Sum: {
-                result = values.reduce((sum: number, val) => sum + Number(val), 0);
-                break;
-            }
-            
-            case CellCalculation.Average: {
-                const sum = values.reduce((sum: number, val) => sum + Number(val), 0);
-                result = values.length > 0 ? sum / values.length : 0;
-                break;
-            }
-            
-            case CellCalculation.Max:
-                result = values.reduce((max, val) => {
-                    const numVal = val instanceof Date ? val.getTime() : Number(val);
-                    const maxVal = max instanceof Date ? max.getTime() : Number(max);
-                    return numVal > maxVal ? val : max;
-                }, values[0]);
-                break;
-            
-            case CellCalculation.Min:
-                result = values.reduce((min, val) => {
-                    const numVal = val instanceof Date ? val.getTime() : Number(val);
-                    const minVal = min instanceof Date ? min.getTime() : Number(min);
-                    return numVal < minVal ? val : min;
-                }, values[0]);
-                break;
-            
-            default:
-                result = 0;
-                break;
-        }
-
-        // Format the result
-        let formattedValue = String(result);
-        
-        if (column && result !== null && typeof result === "number") {
-            // Use undefined for locale to use browser default instead of invalid language ID
-            if (column.dataType === "Currency") {
-                formattedValue = new Intl.NumberFormat(undefined, {
-                    style: 'currency',
-                    currency: 'USD' // Default, could be enhanced to use org currency
-                }).format(result);
-            } else if (column.dataType === "Decimal" || column.dataType === "FP") {
-                formattedValue = new Intl.NumberFormat(undefined, {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                }).format(result);
-            } else if (column.dataType === "Whole.None") {
-                formattedValue = new Intl.NumberFormat(undefined).format(result);
-            }
-        } else if (column && result !== null && result instanceof Date) {
-            if (column.dataType === "DateAndTime.DateOnly" || column.dataType === "DateAndTime.DateAndTime") {
-                formattedValue = result.toLocaleDateString(undefined);
-            }
-        }
-
-        return { value: result, formattedValue };
-    }
-
-    private createHeaderRow(columns: string[], showRowTotals: boolean, columnHeaderField: string): HTMLTableRowElement {
-        const headerRow = document.createElement("tr");
-        
-        // First column is empty (for row headers)
-        const emptyHeader = document.createElement("th");
-        emptyHeader.className = "matrix-header-cell";
-        headerRow.appendChild(emptyHeader);
-
-        // Determine if we need rotated headers (if columns are long)
-        const useRotatedHeaders = columns.some(col => col.length > 15);
-
-        // Column headers
-        columns.forEach(columnKey => {
-            const th = document.createElement("th");
-            th.className = useRotatedHeaders ? "column-header column-header-rotated" : "column-header";
-            
-            if (useRotatedHeaders) {
-                const div = document.createElement("div");
-                const span = document.createElement("span");
-                span.textContent = columnKey;
-                div.appendChild(span);
-                th.appendChild(div);
-            } else {
-                th.textContent = columnKey;
-            }
-            
-            headerRow.appendChild(th);
-        });
-
-        // Row totals header
-        if (showRowTotals) {
-            const totalHeader = document.createElement("th");
-            totalHeader.className = "matrix-header-cell";
-            totalHeader.textContent = "Total";
-            headerRow.appendChild(totalHeader);
-        }
-
-        return headerRow;
-    }
-
-    private createDataRows(
-        table: HTMLTableElement,
-        rows: Map<string, MatrixRow>,
-        columns: string[],
-        calculation: CellCalculation,
-        showRowTotals: boolean
-    ): void {
-        const sortedRows = Array.from(rows.values()).sort((a, b) => this.smartCompare(a.rowLabel, b.rowLabel));
-
-        sortedRows.forEach(row => {
-            if (row.isGroup) return; // Skip group rows in non-grouped rendering
-
-            const tr = document.createElement("tr");
-
-            // Row header
-            const rowHeader = document.createElement("td");
-            rowHeader.className = "matrix-header-cell";
-            rowHeader.textContent = row.rowLabel;
-            tr.appendChild(rowHeader);
-
-            // Data cells
-            const rowRecords: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord[] = [];
-            columns.forEach(columnKey => {
-                const cell = row.cells.get(columnKey);
-                const td = document.createElement("td");
-                td.className = "matrix-cell";
-                
-                if (cell && cell.records.length > 0) {
-                    td.textContent = cell.formattedValue;
-                    rowRecords.push(...cell.records);
-                } else {
-                    td.textContent = "-";
-                    td.classList.add("empty-cell");
-                }
-                
-                tr.appendChild(td);
-            });
-
-            // Row total
-            if (showRowTotals && rowRecords.length > 0) {
-                const totalCell = document.createElement("td");
-                totalCell.className = "matrix-cell total-cell";
-                const cellContentField = this.getFieldName(this._context.parameters.matrixDataSet, "cellContentField");
-                const result = this.calculateCellValue(
-                    rowRecords,
-                    cellContentField,
-                    calculation,
-                    this._context.parameters.matrixDataSet
-                );
-                totalCell.textContent = result.formattedValue;
-                tr.appendChild(totalCell);
-            } else if (showRowTotals) {
-                const totalCell = document.createElement("td");
-                totalCell.className = "matrix-cell total-cell empty-cell";
-                totalCell.textContent = "-";
-                tr.appendChild(totalCell);
-            }
-
-            table.appendChild(tr);
-        });
-    }
-
-    private createGroupedRows(
-        table: HTMLTableElement,
-        rows: Map<string, MatrixRow>,
-        groups: Map<string, MatrixRow[]>,
-        columns: string[],
-        calculation: CellCalculation,
-        showRowTotals: boolean
-    ): void {
-        const sortedGroups = Array.from(groups.keys()).sort();
-
-        sortedGroups.forEach(groupKey => {
-            const groupRows = groups.get(groupKey)!;
-            const groupRow = rows.get(`group_${groupKey}`);
-
-            if (!groupRow) return;
-
-            // Create group header row
-            const groupTr = document.createElement("tr");
-            groupTr.className = "row-group-header";
-            groupTr.onclick = () => this.toggleGroup(groupKey);
-
-            // Group header cell
-            const groupHeader = document.createElement("td");
-            groupHeader.className = "matrix-header-cell";
-            const toggleIcon = document.createElement("span");
-            toggleIcon.className = "group-toggle";
-            toggleIcon.textContent = groupRow.isExpanded ? "▼" : "▶";
-            groupHeader.appendChild(toggleIcon);
-            groupHeader.appendChild(document.createTextNode(groupRow.rowLabel));
-            groupTr.appendChild(groupHeader);
-
-            // Group total cells
-            const groupRecords: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord[] = [];
-            columns.forEach(columnKey => {
-                const cell = groupRow.cells.get(columnKey);
-                const td = document.createElement("td");
-                td.className = "matrix-cell group-total-cell";
-                
-                if (cell && cell.records.length > 0) {
-                    td.textContent = cell.formattedValue;
-                    groupRecords.push(...cell.records);
-                } else {
-                    td.textContent = "-";
-                    td.classList.add("empty-cell");
-                }
-                
-                groupTr.appendChild(td);
-            });
-
-            // Group row total
-            if (showRowTotals && groupRecords.length > 0) {
-                const totalCell = document.createElement("td");
-                totalCell.className = "matrix-cell group-total-cell";
-                const cellContentField = this.getFieldName(this._context.parameters.matrixDataSet, "cellContentField");
-                const result = this.calculateCellValue(
-                    groupRecords,
-                    cellContentField,
-                    calculation,
-                    this._context.parameters.matrixDataSet
-                );
-                totalCell.textContent = result.formattedValue;
-                groupTr.appendChild(totalCell);
-            } else if (showRowTotals) {
-                const totalCell = document.createElement("td");
-                totalCell.className = "matrix-cell group-total-cell empty-cell";
-                totalCell.textContent = "-";
-                groupTr.appendChild(totalCell);
-            }
-
-            table.appendChild(groupTr);
-
-            // Create child rows (if expanded)
-            if (groupRow.isExpanded) {
-                const sortedGroupRows = groupRows.sort((a, b) => this.smartCompare(a.rowLabel, b.rowLabel));
-                sortedGroupRows.forEach(row => {
-                    const tr = document.createElement("tr");
-                    tr.className = "row-group-child";
-
-                    // Row header
-                    const rowHeader = document.createElement("td");
-                    rowHeader.className = "matrix-header-cell";
-                    rowHeader.textContent = row.rowLabel;
-                    tr.appendChild(rowHeader);
-
-                    // Data cells
-                    const rowRecords: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord[] = [];
-                    columns.forEach(columnKey => {
-                        const cell = row.cells.get(columnKey);
-                        const td = document.createElement("td");
-                        td.className = "matrix-cell";
-                        
-                        if (cell && cell.records.length > 0) {
-                            td.textContent = cell.formattedValue;
-                            rowRecords.push(...cell.records);
-                        } else {
-                            td.textContent = "-";
-                            td.classList.add("empty-cell");
-                        }
-                        
-                        tr.appendChild(td);
-                    });
-
-                    // Row total
-                    if (showRowTotals && rowRecords.length > 0) {
-                        const totalCell = document.createElement("td");
-                        totalCell.className = "matrix-cell total-cell";
-                        const cellContentField = this.getFieldName(this._context.parameters.matrixDataSet, "cellContentField");
-                        const result = this.calculateCellValue(
-                            rowRecords,
-                            cellContentField,
-                            calculation,
-                            this._context.parameters.matrixDataSet
-                        );
-                        totalCell.textContent = result.formattedValue;
-                        tr.appendChild(totalCell);
-                    } else if (showRowTotals) {
-                        const totalCell = document.createElement("td");
-                        totalCell.className = "matrix-cell total-cell empty-cell";
-                        totalCell.textContent = "-";
-                        tr.appendChild(totalCell);
-                    }
-
-                    table.appendChild(tr);
-                });
-            }
-        });
-    }
-
-    private createTotalsRow(
-        rows: Map<string, MatrixRow>,
-        columns: string[],
-        calculation: CellCalculation,
-        showRowTotals: boolean
-    ): HTMLTableRowElement {
-        const totalsRow = document.createElement("tr");
-
-        // "Total" label
-        const totalLabel = document.createElement("td");
-        totalLabel.className = "matrix-header-cell total-cell";
-        totalLabel.textContent = "Total";
-        totalsRow.appendChild(totalLabel);
-
-        const cellContentField = this.getFieldName(this._context.parameters.matrixDataSet, "cellContentField");
-        const dataset = this._context.parameters.matrixDataSet;
-        const grandTotalRecords: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord[] = [];
-
-        // Column totals
-        columns.forEach(columnKey => {
-            const columnRecords: ComponentFramework.PropertyHelper.DataSetApi.EntityRecord[] = [];
-            
-            rows.forEach(row => {
-                if (row.isGroup) return; // Don't double-count group rows
-                const cell = row.cells.get(columnKey);
-                if (cell) {
-                    columnRecords.push(...cell.records);
-                }
-            });
-
-            const td = document.createElement("td");
-            td.className = "matrix-cell total-cell";
-            
-            if (columnRecords.length > 0) {
-                const result = this.calculateCellValue(columnRecords, cellContentField, calculation, dataset);
-                td.textContent = result.formattedValue;
-                grandTotalRecords.push(...columnRecords);
-            } else {
-                td.textContent = "-";
-                td.classList.add("empty-cell");
-            }
-            
-            totalsRow.appendChild(td);
-        });
-
-        // Grand total (if row totals are shown)
-        if (showRowTotals) {
-            const grandTotalCell = document.createElement("td");
-            grandTotalCell.className = "matrix-cell total-cell";
-            
-            if (grandTotalRecords.length > 0) {
-                // Remove duplicates
-                const uniqueRecords = Array.from(new Set(grandTotalRecords.map(r => r.getRecordId())))
-                    .map(id => grandTotalRecords.find(r => r.getRecordId() === id)!);
-                
-                const result = this.calculateCellValue(uniqueRecords, cellContentField, calculation, dataset);
-                grandTotalCell.textContent = result.formattedValue;
-            } else {
-                grandTotalCell.textContent = "-";
-                grandTotalCell.classList.add("empty-cell");
-            }
-            
-            totalsRow.appendChild(grandTotalCell);
-        }
-
-        return totalsRow;
-    }
-
-    private toggleGroup(groupKey: string): void {
-        if (this._collapsedGroups.has(groupKey)) {
-            this._collapsedGroups.delete(groupKey);
-        } else {
-            this._collapsedGroups.add(groupKey);
-        }
-        
-        // Save state
-        this._context.mode.setControlState({
-            collapsedGroups: JSON.stringify(Array.from(this._collapsedGroups))
-        });
-        
-        // Trigger refresh
-        this.updateView(this._context);
     }
 
     public getOutputs(): IOutputs {
@@ -769,6 +426,8 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
     }
 
     public destroy(): void {
-        // Cleanup if necessary
+        if (this._root) {
+            this._root.unmount();
+        }
     }
 }
