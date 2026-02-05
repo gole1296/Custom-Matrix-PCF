@@ -234,15 +234,103 @@ function transformDatasetToPivot(
 
 interface IPivotTableProps {
     pivotData: IPivotData;
+    valueColumn: ComponentFramework.PropertyHelper.DataSetApi.Column;
+    aggregationType: 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'COUNT';
 }
 
 interface IPivotRow {
     rowKey: string;
-    [key: string]: string | number;
+    rowTotal?: number;
+    [key: string]: string | number | undefined;
 }
 
-const PivotTable: React.FC<IPivotTableProps> = ({ pivotData }) => {
+/**
+ * Format a numeric value based on column data type
+ */
+function formatValue(value: number, dataType: string): string {
+    if (dataType === "Currency") {
+        return new Intl.NumberFormat(undefined, {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(value);
+    } else if (dataType === "Decimal" || dataType === "FP") {
+        return new Intl.NumberFormat(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(value);
+    } else if (dataType === "Whole.None") {
+        return new Intl.NumberFormat(undefined, {
+            maximumFractionDigits: 0
+        }).format(value);
+    } else if (dataType === "DateAndTime.DateOnly" || dataType === "DateAndTime.DateAndTime") {
+        return new Date(value).toLocaleDateString(undefined);
+    }
+    return String(value);
+}
+
+const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggregationType }) => {
     const { rowKeys, columnKeys, gridData } = pivotData;
+
+    // Calculate totals
+    const columnTotals = new Map<string, number>();
+    const rowTotals = new Map<string, number>();
+    
+    // Calculate column totals and row totals
+    columnKeys.forEach(colKey => {
+        let colTotal = 0;
+        let colCount = 0;
+        rowKeys.forEach(rowKey => {
+            const cellKey = `${rowKey}_|_${colKey}`;
+            const value = gridData.get(cellKey);
+            if (value !== undefined) {
+                if (aggregationType === 'COUNT') {
+                    colTotal += value;
+                } else if (aggregationType === 'SUM' || aggregationType === 'AVG') {
+                    colTotal += value;
+                    colCount++;
+                } else if (aggregationType === 'MIN') {
+                    colTotal = colCount === 0 ? value : Math.min(colTotal, value);
+                    colCount++;
+                } else if (aggregationType === 'MAX') {
+                    colTotal = colCount === 0 ? value : Math.max(colTotal, value);
+                    colCount++;
+                }
+            }
+        });
+        if (aggregationType === 'AVG' && colCount > 0) {
+            colTotal = colTotal / colCount;
+        }
+        columnTotals.set(colKey, colTotal);
+    });
+    
+    rowKeys.forEach(rowKey => {
+        let rowTotal = 0;
+        let rowCount = 0;
+        columnKeys.forEach(colKey => {
+            const cellKey = `${rowKey}_|_${colKey}`;
+            const value = gridData.get(cellKey);
+            if (value !== undefined) {
+                if (aggregationType === 'COUNT') {
+                    rowTotal += value;
+                } else if (aggregationType === 'SUM' || aggregationType === 'AVG') {
+                    rowTotal += value;
+                    rowCount++;
+                } else if (aggregationType === 'MIN') {
+                    rowTotal = rowCount === 0 ? value : Math.min(rowTotal, value);
+                    rowCount++;
+                } else if (aggregationType === 'MAX') {
+                    rowTotal = rowCount === 0 ? value : Math.max(rowTotal, value);
+                    rowCount++;
+                }
+            }
+        });
+        if (aggregationType === 'AVG' && rowCount > 0) {
+            rowTotal = rowTotal / rowCount;
+        }
+        rowTotals.set(rowKey, rowTotal);
+    });
 
     // Build columns for DetailsList
     const columns: IColumn[] = [
@@ -258,7 +346,14 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData }) => {
             onRender: (item: IPivotRow) => {
                 return React.createElement(
                     Text,
-                    { variant: "medium", style: { fontWeight: 600 } },
+                    { 
+                        variant: "medium", 
+                        style: { 
+                            fontWeight: item.rowKey === 'TOTAL' ? 700 : 600,
+                            textAlign: 'center',
+                            display: 'block'
+                        } 
+                    },
                     item.rowKey
                 );
             }
@@ -275,11 +370,46 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData }) => {
                 const value = item[colKey];
                 return React.createElement(
                     Text,
-                    { variant: "medium", style: { textAlign: 'right', display: 'block' } },
-                    value !== undefined && value !== null ? value : '-'
+                    { 
+                        variant: "medium", 
+                        style: { 
+                            textAlign: 'center', 
+                            display: 'block',
+                            fontWeight: item.rowKey === 'TOTAL' ? 700 : 400
+                        } 
+                    },
+                    value !== undefined && value !== null && typeof value === 'number'
+                        ? formatValue(value, valueColumn.dataType)
+                        : '-'
                 );
             }
-        }))
+        })),
+        {
+            key: 'rowTotal',
+            name: 'Total',
+            fieldName: 'rowTotal',
+            minWidth: 100,
+            maxWidth: 150,
+            isResizable: true,
+            data: 'number',
+            onRender: (item: IPivotRow) => {
+                const value = item.rowTotal;
+                return React.createElement(
+                    Text,
+                    { 
+                        variant: "medium", 
+                        style: { 
+                            textAlign: 'center', 
+                            display: 'block',
+                            fontWeight: 700
+                        } 
+                    },
+                    value !== undefined && value !== null && typeof value === 'number'
+                        ? formatValue(value, valueColumn.dataType)
+                        : '-'
+                );
+            }
+        }
     ];
 
     // Build rows for DetailsList
@@ -292,8 +422,43 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData }) => {
             row[colKey] = value !== undefined ? value : 0;
         });
         
+        row.rowTotal = rowTotals.get(rowKey) || 0;
+        
         return row;
     });
+    
+    // Add total row
+    const totalRow: IPivotRow = { rowKey: 'TOTAL' };
+    columnKeys.forEach(colKey => {
+        totalRow[colKey] = columnTotals.get(colKey) || 0;
+    });
+    
+    // Calculate grand total
+    let grandTotal = 0;
+    let grandCount = 0;
+    rowKeys.forEach(rowKey => {
+        const rowTotal = rowTotals.get(rowKey);
+        if (rowTotal !== undefined) {
+            if (aggregationType === 'COUNT' || aggregationType === 'SUM') {
+                grandTotal += rowTotal;
+            } else if (aggregationType === 'AVG') {
+                grandTotal += rowTotal;
+                grandCount++;
+            } else if (aggregationType === 'MIN') {
+                grandTotal = grandCount === 0 ? rowTotal : Math.min(grandTotal, rowTotal);
+                grandCount++;
+            } else if (aggregationType === 'MAX') {
+                grandTotal = grandCount === 0 ? rowTotal : Math.max(grandTotal, rowTotal);
+                grandCount++;
+            }
+        }
+    });
+    if (aggregationType === 'AVG' && grandCount > 0) {
+        grandTotal = grandTotal / grandCount;
+    }
+    totalRow.rowTotal = grandTotal;
+    
+    rows.push(totalRow);
 
     // Handle empty data
     if (rowKeys.length === 0 || columnKeys.length === 0) {
@@ -400,9 +565,20 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
             // Transform dataset to pivot structure
             const pivotData = transformDatasetToPivot(dataset, config);
             
+            // Get value column for formatting
+            const valueColumn = dataset.columns.find(col => col.name === config.valueField);
+            
+            if (!valueColumn) {
+                throw new Error(`Value field '${config.valueField}' not found in dataset columns`);
+            }
+            
             // Render React component
             this._root.render(
-                React.createElement(PivotTable, { pivotData })
+                React.createElement(PivotTable, { 
+                    pivotData,
+                    valueColumn,
+                    aggregationType: config.aggregationType
+                })
             );
         } catch (error) {
             // Display error message

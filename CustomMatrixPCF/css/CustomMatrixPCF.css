@@ -17,7 +17,7 @@
     background-color: #f3f2f1;
     border: 1px solid #edebe9;
     padding: 8px 12px;
-    text-align: left;
+    text-align: center;
     font-weight: 600;
     color: #323130;
 }
@@ -25,5 +25,32 @@
 .pcf-table td {
     border: 1px solid #edebe9;
     padding: 8px 12px;
+    text-align: center;
     color: #323130;
+}
+
+/* Fluent UI DetailsList styling */
+.ms-DetailsHeader {
+    border-bottom: 1px solid #edebe9;
+}
+
+.ms-DetailsHeader-cell {
+    border-right: 1px solid #edebe9;
+}
+
+.ms-DetailsHeader-cell:last-child {
+    border-right: none;
+}
+
+.ms-DetailsRow-cell {
+    border-right: 1px solid #edebe9;
+}
+
+.ms-DetailsRow-cell:last-child {
+    border-right: none;
+}
+
+.ms-DetailsRow:last-child .ms-DetailsRow-cell {
+    font-weight: 700;
+    background-color: #f3f2f1;
 }
