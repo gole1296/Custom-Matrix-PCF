@@ -346,10 +346,17 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
                 }
             }
         });
-        if (aggregationType === 'AVG' && colCount > 0) {
-            colTotal = colTotal / colCount;
+        // Only store total if we have valid values
+        if (colCount > 0) {
+            if (aggregationType === 'AVG') {
+                colTotal = colTotal / colCount;
+            }
+            columnTotals.set(colKey, colTotal);
+        } else if (aggregationType === 'COUNT' || aggregationType === 'SUM') {
+            // For COUNT and SUM with no values, store 0
+            columnTotals.set(colKey, 0);
         }
-        columnTotals.set(colKey, colTotal);
+        // For MIN/MAX with no values, don't store anything (cell will be blank)
     });
     
     rowKeys.forEach(rowKey => {
@@ -373,10 +380,17 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
                 }
             }
         });
-        if (aggregationType === 'AVG' && rowCount > 0) {
-            rowTotal = rowTotal / rowCount;
+        // Only store total if we have valid values
+        if (rowCount > 0) {
+            if (aggregationType === 'AVG') {
+                rowTotal = rowTotal / rowCount;
+            }
+            rowTotals.set(rowKey, rowTotal);
+        } else if (aggregationType === 'COUNT' || aggregationType === 'SUM') {
+            // For COUNT and SUM with no values, store 0
+            rowTotals.set(rowKey, 0);
         }
-        rowTotals.set(rowKey, rowTotal);
+        // For MIN/MAX with no values, don't store anything (cell will be blank)
     });
 
     // Build columns for DetailsList
@@ -471,10 +485,10 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
         columnKeys.forEach(colKey => {
             const cellKey = `${rowKey}_|_${colKey}`;
             const value = gridData.get(cellKey);
-            row[colKey] = value !== undefined ? value : 0;
+            row[colKey] = value; // Keep as undefined if no value
         });
         
-        row.rowTotal = rowTotals.get(rowKey) || 0;
+        row.rowTotal = rowTotals.get(rowKey); // Keep as undefined if no total
         
         return row;
     });
@@ -483,7 +497,7 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
     if (showTotals) {
         const totalRow: IPivotRow = { rowKey: 'TOTAL' };
         columnKeys.forEach(colKey => {
-            totalRow[colKey] = columnTotals.get(colKey) || 0;
+            totalRow[colKey] = columnTotals.get(colKey); // Keep as undefined if no total
         });
         
         // Calculate grand total
@@ -509,7 +523,13 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
         if (aggregationType === 'AVG' && grandCount > 0) {
             grandTotal = grandTotal / grandCount;
         }
-        totalRow.rowTotal = grandTotal;
+        // Only set grand total if we have valid values
+        if (grandCount > 0) {
+            totalRow.rowTotal = grandTotal;
+        } else if (aggregationType === 'COUNT' || aggregationType === 'SUM') {
+            totalRow.rowTotal = 0;
+        }
+        // For MIN/MAX with no values, leave rowTotal as undefined
         
         rows.push(totalRow);
     }
