@@ -413,9 +413,7 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
                         style: { 
                             fontWeight: item.rowKey === 'TOTAL' ? 700 : 600,
                             textAlign: 'center',
-                            display: 'block',
-                            whiteSpace: 'normal',
-                            wordWrap: 'break-word'
+                            display: 'block'
                         } 
                     },
                     item.rowKey
