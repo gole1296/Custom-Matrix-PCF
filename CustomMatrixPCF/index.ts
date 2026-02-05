@@ -673,7 +673,19 @@ export class CustomMatrixPCF implements ComponentFramework.StandardControl<IInpu
                 'MAX': 'Maximum'
             };
             
-            const tableDisplayName = dataset.getTitle() || 'Records';
+            // Get the entity display name from the dataset
+            // The entity reference name contains the plural display name
+            let tableDisplayName = 'Records';
+            if ((dataset as any).getEntityReferenceName) {
+                tableDisplayName = (dataset as any).getEntityReferenceName();
+            } else if (dataset.getTargetEntityType) {
+                const entityType = dataset.getTargetEntityType();
+                // Format the logical name (e.g., "contact" -> "Contacts")
+                if (entityType) {
+                    tableDisplayName = entityType.charAt(0).toUpperCase() + entityType.slice(1) + 's';
+                }
+            }
+            
             const aggregationDisplay = aggregationDisplayNames[config.aggregationType] || config.aggregationType;
             const valueFieldDisplay = valueColumn.displayName || config.valueField;
             const rowFieldDisplay = rowColumn?.displayName || config.groupByRow;
