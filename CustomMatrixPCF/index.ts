@@ -278,6 +278,10 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
     const columnTotals = new Map<string, number>();
     const rowTotals = new Map<string, number>();
     
+    // Calculate column width for even distribution
+    const totalColumns = columnKeys.length + 1 + (showTotals ? 1 : 0); // +1 for row header column
+    const columnWidth = Math.max(100, Math.floor((100 / totalColumns)));
+    
     // Calculate column totals and row totals
     columnKeys.forEach(colKey => {
         let colTotal = 0;
@@ -340,7 +344,6 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
             name: '',
             fieldName: 'rowKey',
             minWidth: 150,
-            maxWidth: 250,
             isResizable: true,
             isRowHeader: true,
             data: 'string',
@@ -363,8 +366,7 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
             key: `col_${index}`,
             name: colKey,
             fieldName: colKey,
-            minWidth: 100,
-            maxWidth: 150,
+            minWidth: columnWidth,
             isResizable: true,
             data: 'number',
             styles: {
@@ -391,10 +393,9 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
         })),
         ...(showTotals ? [{
             key: 'rowTotal',
-            name: 'Total',
+            name: 'TOTAL',
             fieldName: 'rowTotal',
-            minWidth: 100,
-            maxWidth: 150,
+            minWidth: columnWidth,
             isResizable: true,
             data: 'number',
             styles: {
@@ -486,7 +487,7 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
         React.createElement(DetailsList, {
             items: rows,
             columns: columns,
-            layoutMode: DetailsListLayoutMode.justified,
+            layoutMode: DetailsListLayoutMode.fixedColumns,
             selectionMode: SelectionMode.none,
             isHeaderVisible: true,
             compact: false

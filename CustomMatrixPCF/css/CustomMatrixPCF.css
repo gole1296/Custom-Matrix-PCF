@@ -42,6 +42,7 @@
 
 .ms-DetailsHeader-cell:last-child {
     border-right: none;
+    font-weight: 700;
 }
 
 .ms-DetailsRow {
@@ -60,6 +61,8 @@
 
 .ms-DetailsRow-cell:last-child {
     border-right: none;
+    background-color: #f3f2f1;
+    font-weight: 700;
 }
 
 .ms-DetailsRow:last-child .ms-DetailsRow-cell {
