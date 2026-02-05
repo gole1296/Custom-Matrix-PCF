@@ -252,9 +252,30 @@ interface IPivotRow {
 }
 
 /**
- * Format a numeric value based on column data type
+ * Format a numeric value based on column data type and aggregation type
+ * Formatting rules:
+ * - COUNT: Always whole numbers
+ * - SUM: Preserves source format (whole->whole, decimal->decimal, currency->currency)
+ * - AVG: Whole->decimal, others preserve format
+ * - MIN/MAX: Preserves source format including dates
  */
-function formatValue(value: number, dataType: string): string {
+function formatValue(value: number, dataType: string, aggregationType: 'SUM' | 'AVG' | 'MIN' | 'MAX' | 'COUNT'): string {
+    // COUNT always returns whole numbers regardless of source type
+    if (aggregationType === 'COUNT') {
+        return new Intl.NumberFormat(undefined, {
+            maximumFractionDigits: 0
+        }).format(value);
+    }
+    
+    // AVERAGE on Whole Number fields returns Decimal format (not whole)
+    if (aggregationType === 'AVG' && dataType === "Whole.None") {
+        return new Intl.NumberFormat(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(value);
+    }
+    
+    // For all other cases, format based on source data type
     if (dataType === "Currency") {
         return new Intl.NumberFormat(undefined, {
             style: 'currency',
@@ -392,7 +413,7 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
                         } 
                     },
                     value !== undefined && value !== null && typeof value === 'number'
-                        ? formatValue(value, valueColumn.dataType)
+                        ? formatValue(value, valueColumn.dataType, aggregationType)
                         : '-'
                 );
             }
@@ -421,7 +442,7 @@ const PivotTable: React.FC<IPivotTableProps> = ({ pivotData, valueColumn, aggreg
                         } 
                     },
                     value !== undefined && value !== null && typeof value === 'number'
-                        ? formatValue(value, valueColumn.dataType)
+                        ? formatValue(value, valueColumn.dataType, aggregationType)
                         : '-'
                 );
             }
